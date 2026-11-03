@@ -34,7 +34,7 @@ services:
   dask-scheduler:
     image: python:3.10-slim
     container_name: dask-scheduler
-    command: dask-scheduler
+    command: sh -c "pip install --no-cache-dir dask distributed && dask-scheduler"
     ports:
       - "8786:8786"
       - "8787:8787"
@@ -44,7 +44,7 @@ services:
   dask-worker-1:
     image: python:3.10-slim
     container_name: dask-worker-1
-    command: dask-worker dask-scheduler:8786
+    command: sh -c "pip install --no-cache-dir dask distributed && dask-worker dask-scheduler:8786"
     depends_on:
       - dask-scheduler
     networks:
@@ -53,7 +53,7 @@ services:
   dask-worker-2:
     image: python:3.10-slim
     container_name: dask-worker-2
-    command: dask-worker dask-scheduler:8786
+    command: sh -c "pip install --no-cache-dir dask distributed && dask-worker dask-scheduler:8786"
     depends_on:
       - dask-scheduler
     networks:
