@@ -32,9 +32,7 @@ services:
       - lifemap-net
 
   dask-scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile.dask
+    image: daskdev/dask:latest
     container_name: dask-scheduler
     command: dask-scheduler
     ports:
@@ -44,9 +42,7 @@ services:
       - lifemap-net
 
   dask-worker-1:
-    build:
-      context: .
-      dockerfile: Dockerfile.dask
+    image: daskdev/dask:latest
     container_name: dask-worker-1
     command: dask-worker dask-scheduler:8786
     depends_on:
@@ -55,9 +51,7 @@ services:
       - lifemap-net
 
   dask-worker-2:
-    build:
-      context: .
-      dockerfile: Dockerfile.dask
+    image: daskdev/dask:latest
     container_name: dask-worker-2
     command: dask-worker dask-scheduler:8786
     depends_on:
