@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:latest
@@ -12,7 +10,7 @@ services:
       - lifemap-net
 
   spark-master:
-    image: bitnami/spark:latest
+    image: apache/spark:latest
     container_name: spark-master
     environment:
       - SPARK_MODE=master
@@ -23,7 +21,7 @@ services:
       - lifemap-net
 
   spark-worker:
-    image: bitnami/spark:latest
+    image: apache/spark:latest
     container_name: spark-worker
     environment:
       - SPARK_MODE=worker
