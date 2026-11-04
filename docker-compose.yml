@@ -9,25 +9,58 @@ services:
     networks:
       - lifemap-net
 
+  # La imagen oficial de Spark ignora SPARK_MODE: el rol se elige con el comando.
+  # La misma imagen (spark_batch/Dockerfile, con el MongoDB Spark Connector) sirve al
+  # maestro, al worker y a los jobs.
   spark-master:
-    image: apache/spark:latest
+    build: ./spark_batch
+    image: lifemap-spark:latest
     container_name: spark-master
-    environment:
-      - SPARK_MODE=master
+    hostname: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master --port 7077 --webui-port 8080
     ports:
-      - "8080:8080"
+      - "8081:8080"   # 8080 lo usa Jenkins
       - "7077:7077"
     networks:
       - lifemap-net
 
   spark-worker:
-    image: apache/spark:latest
+    build: ./spark_batch
+    image: lifemap-spark:latest
     container_name: spark-worker
+    hostname: spark-worker
+    user: root   # escribe modelos y resultados en volúmenes compartidos con el driver
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=3g
+      - SPARK_WORKER_CORES=2
+    volumes:
+      - spark_models:/app/models
+      - spark_output:/app/output
     depends_on:
       - spark-master
+    networks:
+      - lifemap-net
+
+  # Jobs batch de Spark (no arrancan con `up`): se lanzan con
+  #   docker compose --profile jobs run --rm spark-jobs spark-submit /app/<job>.py
+  spark-jobs:
+    build: ./spark_batch
+    image: lifemap-spark:latest
+    profiles: ["jobs"]
+    user: root
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - GEOHASH_PRECISION=6
+      - MIN_BUSINESS_DAYS=3650
+    volumes:
+      - spark_models:/app/models
+      - spark_output:/app/output
+    depends_on:
+      - mongodb
+      - spark-master
+      - spark-worker
     networks:
       - lifemap-net
 
@@ -87,6 +120,10 @@ volumes:
   mongo_data:
     driver: local
   jenkins_home:
+    driver: local
+  spark_models:
+    driver: local
+  spark_output:
     driver: local
 
 networks:
