@@ -23,3 +23,4 @@ RUN chmod 644 /opt/spark/jars/mongo*.jar /opt/spark/jars/bson*.jar
 WORKDIR /app
 COPY . /app
 ENV PYTHONPATH=/app
+ENV PATH="/opt/spark/bin:${PATH}"
