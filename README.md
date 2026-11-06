@@ -20,6 +20,7 @@ docker compose --profile jobs run --rm spark-jobs spark-submit /app/load_balanci
 
 La UI del maestro de Spark queda en http://localhost:8081.
 
+
 - Modelos: volumen `spark_models` (`/app/models`); `sentiment_best` es el que carga la Entrega 2.
 - Resultados: colecciones `closure_by_category`, `closure_by_geohash`, `model_metrics`,
   `benchmark_runs`, `benchmark_summary` y `partition_skew`; CSV y JSON en el volumen `spark_output`.
