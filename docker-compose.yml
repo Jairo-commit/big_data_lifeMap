@@ -1,7 +1,8 @@
 # Memoria: este PC tiene ~3,7 GB para Docker (WSL), así que `docker compose up` solo arranca lo que
 # corre siempre (mongodb y api). Spark y Dask están en perfiles y se arrancan solo para los jobs:
 #   docker compose --profile jobs run --rm spark-jobs spark-submit /app/<job>.py   (arranca Spark)
-#   docker compose --profile batch stop                                             (lo apaga al terminar)
+#   docker compose stop spark-master spark-worker dask-scheduler dask-worker-1 dask-worker-2   (lo apaga al terminar;
+#   sin nombres, `stop` apagaría también mongodb y api)
 services:
   mongodb:
     image: mongo:latest
