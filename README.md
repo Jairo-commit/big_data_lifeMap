@@ -18,7 +18,8 @@ docker compose --profile jobs run --rm spark-jobs spark-submit /app/closure_rate
 docker compose --profile jobs run --rm spark-jobs spark-submit /app/load_balancing.py --reps 3
 
 # Al terminar, apagar Spark (y Dask) para liberar memoria: `docker compose up` solo deja mongodb y api
-docker compose --profile batch stop
+# (con los nombres: un `stop` sin nombres apaga también mongodb y la API)
+docker compose stop spark-master spark-worker dask-scheduler dask-worker-1 dask-worker-2
 ```
 
 Spark tiene poca memoria por defecto (worker 1 GB, driver y ejecutor 768 MB). Para un job pesado se
