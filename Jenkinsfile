@@ -106,17 +106,19 @@ pipeline {
             stages {
                 stage('Build images') {
                     steps {
-                        // One service per image: spark-master, spark-worker and spark-jobs share
-                        // lifemap-spark, so it is built once through spark-master. Building every
-                        // service would build that image several times in parallel, and those
-                        // builds collide. Add here any new service that has its own `build:`
-                        sh 'docker compose build spark-master api'
+                        // One image at a time, to keep memory low on this PC. spark-master,
+                        // spark-worker and spark-jobs share lifemap-spark, so it is built once
+                        // through spark-master (its profile has to be on to build it). Add here
+                        // any new service that has its own `build:`
+                        sh 'docker compose --profile jobs build spark-master'
+                        sh 'docker compose build api'
                     }
                 }
                 stage('Start services') {
                     steps {
-                        // Waits until every service is running, and healthy if it has a
-                        // healthcheck. Secrets go in withCredentials([...]) { } around this sh
+                        // Starts only the services without a profile (mongodb and api): Spark and
+                        // Dask are only for the batch jobs (see docker-compose.yml). Waits until
+                        // they are healthy. Secrets go in withCredentials([...]) { } around this sh
                         sh "${STAGING_COMPOSE} up -d --wait"
                     }
                 }

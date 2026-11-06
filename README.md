@@ -16,9 +16,16 @@ docker compose --profile jobs run --rm spark-jobs spark-submit /app/closure_rate
 
 # Punto 6: balanceo de carga (2, 8, 32 y 200 particiones, 3 repeticiones)
 docker compose --profile jobs run --rm spark-jobs spark-submit /app/load_balancing.py --reps 3
+
+# Al terminar, apagar Spark (y Dask) para liberar memoria: `docker compose up` solo deja mongodb y api
+docker compose --profile batch stop
 ```
 
+Spark tiene poca memoria por defecto (worker 1 GB, driver y ejecutor 768 MB). Para un job pesado se
+sube por variables, p. ej. `SPARK_WORKER_MEMORY=2g SPARK_EXECUTOR_MEMORY=1536m docker compose ...`.
+
 La UI del maestro de Spark queda en http://localhost:8081.
+
 
 - Modelos: volumen `spark_models` (`/app/models`); `sentiment_best` es el que carga la Entrega 2.
 - Resultados: colecciones `closure_by_category`, `closure_by_geohash`, `model_metrics`,
