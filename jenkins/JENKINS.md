@@ -20,7 +20,7 @@ missed webhook skipped (for example while this PC was off).
  PR opened / merged into main
             │
             ▼
-         GitHub ── webhook ──► ngrok (public HTTPS URL) ──► Jenkins (container on this PC, :8090)
+         GitHub ── webhook ──► ngrok (public HTTPS URL) ──► Jenkins (container on this PC, :8095)
             ▲                                                   │
             └──────────── ✓ / ✗ on the commit ──────────────────┤
                                                                 ▼
@@ -41,9 +41,8 @@ green. **Nobody needs to edit the `Jenkinsfile` to switch them on**: adding the 
 For CD:
 
 - **`docker-compose.yml`**: the whole system. Give the API (and anything the others wait for) a
-  `healthcheck`: *Start services* waits until they are healthy. **Use host ports different from
-  US-Wildfires-Big-Data's** (`5000`, `27017`, `8080`, `8786`, `8787`), and not `8090` (Jenkins):
-  both deployed systems run on this same PC.
+  `healthcheck`: *Start services* waits until they are healthy. Do not use `8095` as a host port
+  (Jenkins), and do not set `container_name`: staging and the deployed stack run side by side.
 - **`jenkins/docker-compose.staging.yml`**: removes the published ports, so staging can run
   next to the deployed stack. One entry per service that publishes ports:
 
@@ -55,12 +54,11 @@ For CD:
 
 - **`jenkins/api-tests.sh`** (executable, `chmod +x`): calls the staging API and exits with 1 if
   a check fails. It gets the API URL as its first argument. The `Jenkinsfile` passes
-  `http://api:5000`; change that line if the service or port is different.
-  [`US-Wildfires-Big-Data/jenkins/api-tests.sh`](https://github.com/Loperaa-Juan/US-Wildfires-Big-Data/blob/main/jenkins/api-tests.sh)
-  is a good template (`curl` + `jq`).
+  `http://api:5000`; change that line if the service or port is different. Each check is a
+  `curl` call whose JSON response is checked with `jq`.
 - **Secrets** (API tokens, passwords): never in the repository. Add them as Jenkins credentials
-  and wrap the `sh` of *Start services* and *Deploy* in `withCredentials([...]) { }`, like the
-  `kaggle` credential in the US-Wildfires `Jenkinsfile`.
+  and wrap the `sh` of *Start services* and *Deploy* in `withCredentials([...]) { }`, for example
+  `withCredentials([string(credentialsId: 'my-token', variable: 'MY_TOKEN')]) { sh '...' }`.
 - If several services build the **same image**, change *Build images* to build one service per
   image (`docker compose build <service> <service>`): parallel builds of one image collide.
 
@@ -76,17 +74,28 @@ CI commands.
 
 ### A. Jenkins
 
-The Jenkins already running for US-Wildfires-Big-Data (`jenkins` container, port 8090, Docker
-socket mounted, `/var/jenkins_home` at the same path) is reused: one Jenkins builds both
-projects. Check it is up with `docker exec jenkins docker ps`.
+Jenkins runs as a container on this PC, built from [`jenkins/Dockerfile`](Dockerfile) (uv, the
+Docker CLI with compose, and jq). It has no Docker daemon inside: it uses the host's Docker through
+its socket, so the socket must be mounted and the `jenkins` user must be in the socket's group.
 
-To set it up from scratch on another PC, [`jenkins/Dockerfile`](Dockerfile) is the same image;
-follow section A of US-Wildfires-Big-Data's `jenkins/JENKINS.md`.
+```bash
+docker build -t lifemap-jenkins jenkins/
+docker run -d --name jenkins --restart unless-stopped \
+  -p 8095:8080 \
+  -v jenkins_home:/var/jenkins_home \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --group-add "$(stat -c %g /var/run/docker.sock)" \
+  lifemap-jenkins
+```
+
+- `--restart unless-stopped` starts it again when the PC boots.
+- The first admin password: `docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword`.
+  Open `http://localhost:8095`, install the suggested plugins, and also **GitHub Branch Source**.
+- Check that it reaches Docker: `docker exec jenkins docker ps` must list the containers.
 
 ### B. The job
 
-1. **GitHub token**: the classic token with **`repo:status`** used by the US-Wildfires job works
-   here too if it belongs to an account with write access to this repository. Otherwise create
+1. **GitHub token**: from an account with write access to this repository, create
    one (**GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)**)
    and add it in Jenkins as *Username with password* (username + token).
 2. **New Item** → `big-data-lifemap` → **Multibranch Pipeline** → OK. Then:
@@ -107,7 +116,7 @@ follow section A of US-Wildfires-Big-Data's `jenkins/JENKINS.md`.
 
 ### C. ngrok
 
-GitHub must reach Jenkins, but `localhost:8090` only exists on this PC. ngrok gives it a public
+GitHub must reach Jenkins, but `localhost:8095` only exists on this PC. ngrok gives it a public
 HTTPS address and forwards the requests through a tunnel.
 
 1. Create a free account at [ngrok.com](https://ngrok.com/). On the dashboard copy your
@@ -119,17 +128,17 @@ HTTPS address and forwards the requests through a tunnel.
    ```bash
    docker run -d --name ngrok --restart unless-stopped --network host \
      -e NGROK_AUTHTOKEN=<your authtoken> \
-     ngrok/ngrok:latest http --url=<your static domain> 8090
+     ngrok/ngrok:latest http --url=<your static domain> 8095
    ```
 
-   `--network host` lets it reach `localhost:8090`. Check it with `docker logs ngrok` and by
+   `--network host` lets it reach `localhost:8095`. Check it with `docker logs ngrok` and by
    opening `https://<your static domain>` (ngrok's free plan shows a warning page in browsers
    first; webhooks are not affected).
 3. **Jenkins is now on the internet.** In **Manage Jenkins → Security**, make sure anonymous
    users have no access and *Allow users to sign up* is off.
 4. In **Manage Jenkins → System → Jenkins URL**: `https://<your static domain>/`. The ✓/✗ on
    GitHub then link to a page teammates can open. Use this address from now on, also on this PC
-   (mixing it with `localhost:8090` gives *No valid crumb* errors).
+   (mixing it with `localhost:8095` gives *No valid crumb* errors).
 
 ### D. The webhook
 
@@ -143,10 +152,6 @@ HTTPS address and forwards the requests through a tunnel.
    - **Secret**: the same value.
    - **Which events**: *Let me select individual events* → **Pushes** and **Pull requests** only.
    - **Active** → **Add webhook**. The ping under **Recent Deliveries** should show a ✓.
-
-The same `/github-webhook/` URL works for every repository: Jenkins passes each event to the
-jobs that build that repository. To make US-Wildfires-Big-Data instant too, its owner adds the
-same webhook there (with the same secret).
 
 ### E. Block merging when the build fails (optional)
 
@@ -172,7 +177,10 @@ rule** for `main`: ✅ *Require a pull request before merging*, ✅ *Require sta
 - **PC was off**: GitHub does not retry; the hourly scan catches up, or click **Scan Repository
   Now**, or **Redeliver** from **Recent Deliveries**.
 - **Deploy fails with `port is already allocated`**: a port in `docker-compose.yml` is already
-  used, often by US-Wildfires-Big-Data's deployed stack. `docker ps` shows who has it.
+  used by another container or program on this PC. `docker ps` shows who has it.
+- **`failed to connect to the docker API at unix:///var/run/docker.sock`**: the Jenkins container
+  was started without the Docker socket or without its group (`-v /var/run/docker.sock:...` and
+  `--group-add`, section A).
 - **Install fails with `The lockfile at uv.lock needs to be updated`**: run `uv lock` and commit
   `uv.lock`.
 - **`Failed to spawn: ruff` / `pytest`**: add them with `uv add --dev ruff pytest`.
