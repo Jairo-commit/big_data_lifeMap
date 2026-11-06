@@ -23,8 +23,7 @@ from datetime import datetime, timezone
 from pyspark.ml import Pipeline
 from pyspark.ml.classification import LogisticRegression, NaiveBayes
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
-from pyspark.ml.feature import HashingTF, IDF, RegexTokenizer, StopWordsRemover
-from pyspark.ml.feature import SQLTransformer
+from pyspark.ml.feature import IDF, HashingTF, RegexTokenizer, SQLTransformer, StopWordsRemover
 from pyspark.sql import functions as F
 
 from lifemap_common import (
