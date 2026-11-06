@@ -1,0 +1,12 @@
+# Staging: the same stack as docker-compose.yml without published ports, so the Jenkinsfile can
+# start it (project lifemap-staging) next to the deployed stack (project lifemap) on this PC.
+# Jenkins reaches it by joining its network. One entry per service that publishes ports.
+services:
+  mongodb:
+    ports: !reset []
+  spark-master:
+    ports: !reset []
+  dask-scheduler:
+    ports: !reset []
+  api:
+    ports: !reset []
