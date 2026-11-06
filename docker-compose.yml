@@ -1,6 +1,12 @@
+# Memoria: este PC tiene ~3,7 GB para Docker (WSL), así que `docker compose up` solo arranca lo que
+# corre siempre (mongodb y api). Spark y Dask están en perfiles y se arrancan solo para los jobs:
+#   docker compose --profile jobs run --rm spark-jobs spark-submit /app/<job>.py   (arranca Spark)
+#   docker compose --profile batch stop                                             (lo apaga al terminar)
 services:
   mongodb:
     image: mongo:latest
+    # Por defecto MongoDB usa la mitad de la RAM libre como caché: se limita a 256 MB
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
     ports:
       - "27017:27017"
     volumes:
@@ -20,6 +26,7 @@ services:
   spark-master:
     build: ./spark_batch
     image: lifemap-spark:latest
+    profiles: ["batch", "jobs"]
     hostname: spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master --port 7077 --webui-port 8080
     ports:
@@ -31,11 +38,13 @@ services:
   spark-worker:
     build: ./spark_batch
     image: lifemap-spark:latest
+    profiles: ["batch", "jobs"]
     hostname: spark-worker
     user: root   # escribe modelos y resultados en volúmenes compartidos con el driver
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
-      - SPARK_WORKER_MEMORY=3g
+      # Memoria que el worker da a los ejecutores. Para un job pesado: SPARK_WORKER_MEMORY=2g docker compose ...
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-1g}
       - SPARK_WORKER_CORES=2
     volumes:
       - spark_models:/app/models
@@ -55,6 +64,9 @@ services:
     environment:
       - MONGO_URI=mongodb://mongodb:27017/
       - SPARK_MASTER_URL=spark://spark-master:7077
+      # Leídas por spark-submit; el ejecutor debe caber en SPARK_WORKER_MEMORY
+      - SPARK_DRIVER_MEMORY=${SPARK_DRIVER_MEMORY:-768m}
+      - SPARK_EXECUTOR_MEMORY=${SPARK_EXECUTOR_MEMORY:-768m}
       - GEOHASH_PRECISION=6
       - MIN_BUSINESS_DAYS=3650
     volumes:
@@ -69,6 +81,7 @@ services:
 
   dask-scheduler:
     image: daskdev/dask:latest
+    profiles: ["batch"]
     command: dask-scheduler
     ports:
       - "8786:8786"
@@ -78,6 +91,7 @@ services:
 
   dask-worker-1:
     image: daskdev/dask:latest
+    profiles: ["batch"]
     command: dask-worker dask-scheduler:8786
     depends_on:
       - dask-scheduler
@@ -86,6 +100,7 @@ services:
 
   dask-worker-2:
     image: daskdev/dask:latest
+    profiles: ["batch"]
     command: dask-worker dask-scheduler:8786
     depends_on:
       - dask-scheduler
@@ -100,15 +115,19 @@ services:
     environment:
       - MONGO_URI=mongodb://mongodb:27017/lifemap_db
       - GIT_COMMIT=${GIT_COMMIT:-unknown}   # Jenkins lo define; /health lo devuelve
+      - MODEL_PATH=/app/models/sentiment_best   # lo escribe spark_batch/sentiment_model.py
+      - SPARK_DRIVER_MEMORY=512m   # Spark local de /predict: solo clasifica textos
+    volumes:
+      - spark_models:/app/models:ro
     depends_on:
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 30s   # crea los índices al arrancar
     networks:
       - lifemap-net
 
