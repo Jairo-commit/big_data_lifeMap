@@ -1,0 +1,30 @@
+[project]
+name = "big-data-lifemap"
+version = "0.1.0"
+description = "LifeMap: ingestion with Dask, batch jobs with Spark and a Flask API over MongoDB"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+# Not an installable package: the services run in their own Docker images
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+# Directories whose modules are imported as first-party (tests import lifemap_common)
+src = ["spark_batch", "api_flask", "dask_ingestion", "tests"]
+
+[tool.ruff.lint]
+# /health catches any exception on purpose: it reports MongoDB as unhealthy instead of failing
+ignore = ["BLE001"]

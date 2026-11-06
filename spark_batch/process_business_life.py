@@ -1,6 +1,7 @@
 import os
-from pymongo import MongoClient
+
 import pandas as pd
+from pymongo import MongoClient
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 

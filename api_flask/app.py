@@ -1,6 +1,7 @@
-from flask import Flask, jsonify, request
-import pymongo
 import os
+
+import pymongo
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
@@ -17,7 +18,7 @@ def health_check():
         client.server_info()
         mongo_status = "healthy"
     except Exception as e:
-        mongo_status = f"unhealthy: {str(e)}"
+        mongo_status = f"unhealthy: {e!s}"
 
     commit_hash = os.getenv("GIT_COMMIT", "unknown")
     return jsonify({
