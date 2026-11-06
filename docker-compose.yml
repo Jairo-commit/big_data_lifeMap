@@ -80,6 +80,26 @@ services:
     networks:
       - lifemap-net
 
+  # Punto 2: ingesta con Dask (no arranca con `up`). Descarga el dataset de Yelp de Kaggle al
+  # volumen yelp_data la primera vez:
+  #   KAGGLE_USERNAME=... KAGGLE_KEY=... docker compose --profile jobs run --rm ingest
+  ingest:
+    build: ./dask_ingestion
+    image: lifemap-ingest:latest
+    profiles: ["jobs"]
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+      - DATA_DIR=/data
+      - KAGGLE_USERNAME=${KAGGLE_USERNAME:-}
+      - KAGGLE_KEY=${KAGGLE_KEY:-}
+    volumes:
+      - yelp_data:/data
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - lifemap-net
+
   dask-scheduler:
     image: daskdev/dask:latest
     profiles: ["batch"]
@@ -138,6 +158,8 @@ volumes:
   spark_models:
     driver: local
   spark_output:
+    driver: local
+  yelp_data:
     driver: local
 
 networks:

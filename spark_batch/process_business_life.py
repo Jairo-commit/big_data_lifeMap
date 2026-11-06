@@ -15,7 +15,9 @@ def process_business_lifecycle():
     print("Índice 2dsphere creado exitosamente en la colección businesses.")
 
     # 2. Transformar negocios a formato GeoJSON y calcular días de vida y censura
-    businesses = list(db.businesses.find({}))
+    # Solo los que aún no se procesaron (los procesados ya no tienen latitude): volver a ejecutar
+    # este paso no los toca, y si se interrumpe continúa donde quedó
+    businesses = list(db.businesses.find({"latitude": {"$exists": True}}))
     print(f"Procesando {len(businesses)} negocios...")
 
     for biz in businesses:

@@ -114,6 +114,16 @@ docker run -d --name jenkins --restart unless-stopped \
      fallback; the webhook starts the builds).
 3. Save. The scan log lists `main` once the `Jenkinsfile` is on `main`.
 
+### B2. The Kaggle credential (for the ingestion)
+
+The *Ingest* stage downloads the Yelp dataset from Kaggle the first time (then it stays in the
+`yelp_data` volume).
+
+1. On [kaggle.com](https://www.kaggle.com/) → **Settings → API → Create New Token**: it downloads
+   `kaggle.json` with your `username` and `key`.
+2. In Jenkins, **Manage Jenkins → Credentials → Global → Add Credentials**: kind *Username with
+   password*, **Username**: the `username`, **Password**: the `key`, **ID**: `kaggle`.
+
 ### C. ngrok
 
 GitHub must reach Jenkins, but `localhost:8095` only exists on this PC. ngrok gives it a public

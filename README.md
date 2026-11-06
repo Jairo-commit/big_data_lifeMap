@@ -1,12 +1,19 @@
 # big_data_lifeMap
 
-## Jobs de Spark (Entrega 1, puntos 4 a 6)
+## Ingesta y jobs de Spark (Entrega 1, puntos 2 a 6)
 
-Requieren que la ingesta y la vida de los negocios (puntos 2 y 3) ya estén en MongoDB.
+Los mismos pasos que corre Jenkins en cada merge a `main`.
 
 ```bash
 docker compose build
 docker compose up -d mongodb spark-master spark-worker
+
+# Punto 2: ingesta con Dask. La primera vez descarga el dataset de Yelp de Kaggle (token en
+# kaggle.com → Settings → API). Volver a ejecutarla no duplica datos
+KAGGLE_USERNAME=<usuario> KAGGLE_KEY=<token> docker compose --profile jobs run --rm ingest
+
+# Punto 3: ubicación GeoJSON y vida de los negocios (no necesita Spark)
+docker compose --profile jobs run --rm --no-deps spark-jobs python3 /app/process_business_life.py
 
 # Punto 4: sentimiento (Naive Bayes y regresión logística, partición por negocio)
 docker compose --profile jobs run --rm spark-jobs spark-submit /app/sentiment_model.py
