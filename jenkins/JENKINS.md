@@ -60,8 +60,10 @@ For CD:
   and wrap the `sh` of *Start services* and *Deploy* in `withCredentials([...]) { }`, for example
   `withCredentials([string(credentialsId: 'my-token', variable: 'MY_TOKEN')]) { sh '...' }`.
 - **Kaggle** (credential `kaggle`, *Username with password*: Kaggle username + API key): the
-  *Ingest* stage exposes it as `KAGGLE_USERNAME`/`KAGGLE_KEY`. `dataset` uses it only when the
-  Yelp files are missing from the `yelp_data` volume, so the ~9 GB download happens once.
+  *Build images*, *Deploy* and *Ingest* stages expose it as `KAGGLE_USERNAME`/`KAGGLE_KEY`.
+  `docker compose build dataset` downloads the ~5.5 GB Yelp files (business and review) into the image (a BuildKit
+  secret, so the token is not stored); the layer is cached, so it happens once. The staging stack
+  does not run `dataset` or `ingest`.
 - If several services build the **same image**, change *Build images* to build one service per
   image (`docker compose build <service> <service>`): parallel builds of one image collide.
 

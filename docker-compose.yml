@@ -81,12 +81,18 @@ services:
       - lifemap-net
 
   # Valida el dataset de Yelp y lo descarga de Kaggle solo si falta o está incompleto.
-  # Credenciales: KAGGLE_API_TOKEN o KAGGLE_USERNAME + KAGGLE_KEY (shell o .env, nunca en git).
-  # YELP_DATA_DIR=./data/raw usa una carpeta local; por defecto, el volumen yelp_data.
+  # `docker compose build` ya lo descarga dentro de la imagen (secrets de BuildKit con las variables
+  # KAGGLE_API_TOKEN o KAGGLE_USERNAME + KAGGLE_KEY, del shell o de un .env local, nunca en git);
+  # el volumen yelp_data se rellena con esos archivos la primera vez y `up` no descarga de nuevo.
+  # YELP_DATA_DIR=./data/raw usa una carpeta local (no se rellena sola: descarga al arrancar).
   dataset:
-    build: ./dask_ingestion
+    build:
+      context: ./dask_ingestion
+      secrets:
+        - kaggle_api_token
+        - kaggle_username
+        - kaggle_key
     image: lifemap-ingest:latest
-    profiles: ["ingest"]
     command: python download.py
     restart: "no"
     environment:
@@ -98,13 +104,11 @@ services:
     networks:
       - lifemap-net
 
-  # Ingesta del dataset completo a MongoDB con Dask (se omite si ya está cargado). Lanza antes
-  # `dataset`, que descarga lo que falte:
-  #   docker compose --profile ingest run --rm ingest
+  # Ingesta del dataset completo a MongoDB con Dask. `docker compose up` la lanza al terminar
+  # `dataset`; se omite si ya hay datos cargados (FORCE_INGEST=1 los recarga). Usa la imagen que
+  # construye `dataset`.
   ingest:
-    build: ./dask_ingestion
     image: lifemap-ingest:latest
-    profiles: ["ingest"]
     command: python ingest.py
     restart: "no"
     environment:
@@ -171,6 +175,15 @@ services:
       start_period: 30s   # crea los índices al arrancar
     networks:
       - lifemap-net
+
+# Solo se leen al construir la imagen del dataset (`docker compose build`)
+secrets:
+  kaggle_api_token:
+    environment: KAGGLE_API_TOKEN
+  kaggle_username:
+    environment: KAGGLE_USERNAME
+  kaggle_key:
+    environment: KAGGLE_KEY
 
 volumes:
   mongo_data:

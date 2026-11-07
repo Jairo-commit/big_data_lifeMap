@@ -47,7 +47,11 @@ pipeline {
                         // One image at a time: lifemap-spark (spark-master, spark-worker, spark-jobs) and the API
                         sh 'docker compose --profile jobs build spark-master'
                         sh 'docker compose build api'
-                        sh 'docker compose --profile ingest build ingest'
+                        // Downloads the Yelp dataset into the image (credential `kaggle`) unless the layer is cached
+                        withCredentials([usernamePassword(credentialsId: 'kaggle',
+                                usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
+                            sh 'docker compose build dataset'
+                        }
                     }
                 }
                 stage('API tests') {
@@ -62,16 +66,19 @@ pipeline {
                 }
                 stage('Deploy') {
                     steps {
-                        sh '$PROD up -d --wait'
+                        withCredentials([usernamePassword(credentialsId: 'kaggle',
+                                usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
+                            sh '$PROD up -d --wait'
+                        }
                     }
                 }
                 stage('Ingest') {
                     steps {
-                        // Validates the Yelp files in the yelp_data volume and downloads them from Kaggle
-                        // only if missing (credential `kaggle`), then loads the full dataset into MongoDB
+                        // `dataset` + `ingest` start with the stack; this waits until `ingest` has loaded the
+                        // full dataset into MongoDB (it exits at once if it was already loaded)
                         withCredentials([usernamePassword(credentialsId: 'kaggle',
                                 usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
-                            sh '$PROD --profile ingest run --rm ingest'
+                            sh '$PROD up --exit-code-from ingest ingest'
                         }
                     }
                 }

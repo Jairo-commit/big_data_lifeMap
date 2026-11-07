@@ -58,6 +58,9 @@ def main() -> int:
 
     print(f"Dataset missing or incomplete in {DATA_DIR}")
     if not has_credentials():
+        if "--if-credentials" in sys.argv:
+            print("No Kaggle credentials: skipping, `dataset` will download it when it starts.")
+            return 0
         print(
             "ERROR: Kaggle credentials not found. Set KAGGLE_API_TOKEN, or KAGGLE_USERNAME and "
             "KAGGLE_KEY (shell or .env), or place the files in the data volume.",

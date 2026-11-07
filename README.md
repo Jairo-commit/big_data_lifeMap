@@ -3,25 +3,29 @@
 ## Dataset de Yelp e ingesta (puntos 2 y 3)
 
 El dataset completo es [yelp-dataset/yelp-dataset](https://www.kaggle.com/datasets/yelp-dataset/yelp-dataset)
-(~7 M de reseñas). El servicio `dataset` valida que `yelp_academic_dataset_business.json` y
-`yelp_academic_dataset_review.json` existan, no estén vacíos y tengan registros JSON válidos (y que
-una descarga previa terminara) y **solo los descarga de Kaggle si faltan o están incompletos**.
-Después `ingest` carga todo en MongoDB con Dask, por particiones (memoria acotada), y se omite si
-ya hay datos cargados.
+(~7 M de reseñas; solo se bajan `business` y `review`, ~5,5 GB).
+
+- **`docker compose build`** descarga los archivos `yelp_academic_dataset_business.json` y
+  `yelp_academic_dataset_review.json` dentro de la imagen `lifemap-ingest` (secrets de BuildKit: el
+  token no queda en la imagen). Sin credenciales el build sigue y se descarga al arrancar.
+- **`docker compose up`** ejecuta `dataset`, que valida los archivos (existen, no están vacíos, JSON
+  válido y la descarga terminó) y solo los descarga si faltan o están incompletos, y después `ingest`,
+  que carga todo en MongoDB con Dask por particiones (memoria acotada). `ingest` se omite si ya hay
+  datos cargados.
 
 ```bash
 # Credenciales de Kaggle (https://www.kaggle.com/settings): en el shell o en un .env local (no se sube a git)
 export KAGGLE_API_TOKEN=...            # o KAGGLE_USERNAME y KAGGLE_KEY
 
-docker compose up -d mongodb
-docker compose --profile ingest run --rm ingest   # valida/descarga el dataset y lo ingiere
+docker compose build      # descarga el dataset a la imagen
+docker compose up -d      # valida, ingiere en MongoDB y arranca el resto
 ```
 
-- Los archivos viven en el volumen `yelp_data` (`/data/raw`), así que se descargan una sola vez.
+- El volumen `yelp_data` (`/data/raw`) se rellena con los archivos de la imagen la primera vez.
   Para usar una carpeta local con los archivos ya descargados: `YELP_DATA_DIR=./data/raw`.
 - `FORCE_INGEST=1` borra `businesses` y `reviews` y vuelve a cargarlos.
 - Sin credenciales y sin datos, `dataset` falla con un mensaje claro. En Jenkins se usa la
-  credencial `kaggle` (stage *Ingest*).
+  credencial `kaggle` (stages *Build images*, *Deploy* e *Ingest*).
 
 ## Jobs de Spark (Entrega 1, puntos 4 a 6)
 
