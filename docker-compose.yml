@@ -80,6 +80,46 @@ services:
     networks:
       - lifemap-net
 
+  # Valida el dataset de Yelp y lo descarga de Kaggle solo si falta o está incompleto.
+  # Credenciales: KAGGLE_API_TOKEN o KAGGLE_USERNAME + KAGGLE_KEY (shell o .env, nunca en git).
+  # YELP_DATA_DIR=./data/raw usa una carpeta local; por defecto, el volumen yelp_data.
+  dataset:
+    build: ./dask_ingestion
+    image: lifemap-ingest:latest
+    profiles: ["ingest"]
+    command: python download.py
+    restart: "no"
+    environment:
+      - KAGGLE_API_TOKEN=${KAGGLE_API_TOKEN:-}
+      - KAGGLE_USERNAME=${KAGGLE_USERNAME:-}
+      - KAGGLE_KEY=${KAGGLE_KEY:-}
+    volumes:
+      - ${YELP_DATA_DIR:-yelp_data}:/data/raw
+    networks:
+      - lifemap-net
+
+  # Ingesta del dataset completo a MongoDB con Dask (se omite si ya está cargado). Lanza antes
+  # `dataset`, que descarga lo que falte:
+  #   docker compose --profile ingest run --rm ingest
+  ingest:
+    build: ./dask_ingestion
+    image: lifemap-ingest:latest
+    profiles: ["ingest"]
+    command: python ingest.py
+    restart: "no"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+      - FORCE_INGEST=${FORCE_INGEST:-0}
+    volumes:
+      - ${YELP_DATA_DIR:-yelp_data}:/data/raw:ro
+    depends_on:
+      dataset:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+    networks:
+      - lifemap-net
+
   dask-scheduler:
     image: daskdev/dask:latest
     profiles: ["batch"]
@@ -138,6 +178,8 @@ volumes:
   spark_models:
     driver: local
   spark_output:
+    driver: local
+  yelp_data:
     driver: local
 
 networks:

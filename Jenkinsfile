@@ -1,6 +1,6 @@
 // LifeMap CI/CD (Multibranch Pipeline, see jenkins/JENKINS.md).
 // - CI, on pull requests into main and on main: Install → Lint → Test.
-// - CD, on main only: Build images → API tests (staging) → Deploy → Spark jobs.
+// - CD, on main only: Build images → API tests (staging) → Deploy → Ingest → Spark jobs.
 // Steps run in order; if one fails the build stops and nothing after it runs.
 
 pipeline {
@@ -47,6 +47,7 @@ pipeline {
                         // One image at a time: lifemap-spark (spark-master, spark-worker, spark-jobs) and the API
                         sh 'docker compose --profile jobs build spark-master'
                         sh 'docker compose build api'
+                        sh 'docker compose --profile ingest build ingest'
                     }
                 }
                 stage('API tests') {
@@ -62,6 +63,16 @@ pipeline {
                 stage('Deploy') {
                     steps {
                         sh '$PROD up -d --wait'
+                    }
+                }
+                stage('Ingest') {
+                    steps {
+                        // Validates the Yelp files in the yelp_data volume and downloads them from Kaggle
+                        // only if missing (credential `kaggle`), then loads the full dataset into MongoDB
+                        withCredentials([usernamePassword(credentialsId: 'kaggle',
+                                usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
+                            sh '$PROD --profile ingest run --rm ingest'
+                        }
                     }
                 }
                 stage('Spark jobs') {
