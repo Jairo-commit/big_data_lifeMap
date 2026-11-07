@@ -1,5 +1,6 @@
 # big_data_lifeMap
 
+
 ## Dataset de Yelp e ingesta (puntos 2 y 3)
 
 El dataset completo es [yelp-dataset/yelp-dataset](https://www.kaggle.com/datasets/yelp-dataset/yelp-dataset)
