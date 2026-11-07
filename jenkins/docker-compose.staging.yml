@@ -10,3 +10,8 @@ services:
     ports: !reset []
   api:
     ports: !reset []
+  # The API tests do not need the dataset: nothing is ingested in staging
+  dataset:
+    profiles: ["ingest"]
+  ingest:
+    profiles: ["ingest"]
