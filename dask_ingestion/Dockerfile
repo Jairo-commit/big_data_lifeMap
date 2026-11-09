@@ -17,5 +17,5 @@ RUN --mount=type=secret,id=kaggle_api_token,required=false \
     sh -c 'for s in kaggle_api_token kaggle_username kaggle_key; do \
         if [ -s /run/secrets/$s ]; then export "$(echo $s | tr a-z A-Z)=$(cat /run/secrets/$s)"; fi; \
     done; python download.py --if-credentials'
-COPY ingest.py ./
+COPY ingest.py process_business_life.py ./
 CMD ["sh", "-c", "python download.py && python ingest.py"]

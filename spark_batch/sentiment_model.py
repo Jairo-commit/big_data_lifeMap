@@ -79,6 +79,10 @@ def add_class_weights(train_df):
 
 def evaluate(predictions):
     """Accuracy, F1 macro/ponderado, precision/recall/F1 por clase y matriz de confusión."""
+    # Se calculan ~12 métricas sobre las mismas predicciones: sin caché cada una
+    # re-ejecutaría el pipeline completo (TF-IDF incluido) sobre el conjunto de prueba.
+    predictions = predictions.cache()
+
     def metrica(nombre, label=None):
         evaluator = MulticlassClassificationEvaluator(
             labelCol="label", predictionCol="prediction", metricName=nombre)
@@ -99,13 +103,15 @@ def evaluate(predictions):
              .count().na.fill(0).orderBy("label").collect())
     matriz = {CLASES[fila["label"]]: {CLASES[c]: int(fila[str(c)]) for c in CLASES} for fila in filas}
 
-    return {
+    resultado = {
         "accuracy": metrica("accuracy"),
         "f1_weighted": metrica("f1"),
         "f1_macro": sum(m["f1"] for m in por_clase.values()) / len(por_clase),
         "por_clase": por_clase,
         "matriz_confusion": matriz,  # filas = clase real, columnas = clase predicha
     }
+    predictions.unpersist()
+    return resultado
 
 
 def print_report(nombre, metricas):
