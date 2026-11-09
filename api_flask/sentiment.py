@@ -18,6 +18,19 @@ CLASSES = {0: "negativo", 1: "neutral", 2: "positivo"}
 log = logging.getLogger(__name__)
 
 
+def overall_status(mongo_status, model_status):
+    """Estado general de /health: "ok" o "degraded".
+
+    MongoDB caído => degraded (y la API responde 503). Un modelo entrenado que no se puede cargar
+    ("error: ...") también es degraded, pero la API sigue sirviendo el resto de endpoints. Que el
+    modelo aún no esté entrenado ("not_trained") o no se haya cargado todavía ("not_loaded") es
+    normal (staging no tiene modelo) y no degrada.
+    """
+    if mongo_status != "healthy" or model_status.startswith("error"):
+        return "degraded"
+    return "ok"
+
+
 class ModelNotAvailable(RuntimeError):
     """El modelo no está entrenado o no se pudo cargar."""
 
