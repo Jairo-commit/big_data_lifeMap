@@ -29,7 +29,13 @@ docker compose up -d      # valida, ingiere en MongoDB y arranca el resto
 
 ## Jobs de Spark (Entrega 1, puntos 4 a 6)
 
-Requieren que la ingesta y la vida de los negocios (puntos 2 y 3) ya estén en MongoDB.
+Requieren que la ingesta y la vida de los negocios (puntos 2 y 3) ya estén en MongoDB. La vida de
+los negocios (GeoJSON, días-negocio, evento y censura) se calcula después de la ingesta, en la imagen
+de ingesta, y se puede repetir sin dañar los datos:
+
+```bash
+docker compose --profile jobs run --rm business-life
+```
 
 ```bash
 docker compose build

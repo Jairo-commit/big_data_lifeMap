@@ -23,11 +23,13 @@ def process_business_lifecycle():
         lat = biz.get("latitude")
         lon = biz.get("longitude")
 
-        # Transformar a estructura GeoJSON estándar de MongoDB
-        geo_location = {
-            "type": "Point",
-            "coordinates": [float(lon), float(lat)] if lat and lon else [0.0, 0.0]
-        }
+        # Transformar a estructura GeoJSON estándar de MongoDB. Es idempotente: tras la primera
+        # corrida el negocio ya no tiene latitude/longitude, así que se conserva su `location`
+        # en lugar de reemplazarla por [0, 0].
+        if lat and lon:
+            geo_location = {"type": "Point", "coordinates": [float(lon), float(lat)]}
+        else:
+            geo_location = biz.get("location") or {"type": "Point", "coordinates": [0.0, 0.0]}
 
         # Buscar las reseñas de este negocio para calcular la vida
         reviews = list(db.reviews.find({"business_id": biz_id}, {"date": 1}))

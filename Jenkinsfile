@@ -1,6 +1,6 @@
 // LifeMap CI/CD (Multibranch Pipeline, see jenkins/JENKINS.md).
 // - CI, on pull requests into main and on main: Install → Lint → Test.
-// - CD, on main only: Build images → API tests (staging) → Deploy → Ingest → Spark jobs.
+// - CD, on main only: Build images → API tests (staging) → Deploy → Ingest → Business life → Spark jobs.
 // Steps run in order; if one fails the build stops and nothing after it runs.
 
 pipeline {
@@ -16,6 +16,14 @@ pipeline {
         STAGING = 'docker compose -p lifemap-staging -f docker-compose.yml -f jenkins/docker-compose.staging.yml'
         // Deployed stack
         PROD = 'docker compose -p lifemap'
+        // Spark resources for the full dataset (read by docker-compose.yml). Sized for Jenkins on a PC
+        // whose WSL2 has 24 GB (`.wslconfig`): the worker gives 10 GB to the executor, 4 GB go to
+        // the driver and the rest is left for MongoDB and the API. The defaults (1 GB worker,
+        // 768 MB executor, 2 cores) are for small tests and kill the executor on the full dataset.
+        SPARK_WORKER_MEMORY = '12g'
+        SPARK_EXECUTOR_MEMORY = '10g'
+        SPARK_DRIVER_MEMORY = '4g'
+        SPARK_WORKER_CORES = '6'
     }
 
     stages {
@@ -80,6 +88,13 @@ pipeline {
                                 usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
                             sh '$PROD up --exit-code-from ingest ingest'
                         }
+                    }
+                }
+                stage('Business life') {
+                    steps {
+                        // Point 3: days-business, event, censoring and GeoJSON per business (idempotent).
+                        // The Spark jobs need these fields.
+                        sh '$PROD --profile jobs run --rm business-life'
                     }
                 }
                 stage('Spark jobs') {

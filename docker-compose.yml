@@ -46,7 +46,7 @@ services:
     environment:
       # Memoria que el worker da a los ejecutores. Para un job pesado: SPARK_WORKER_MEMORY=2g docker compose ...
       - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-1g}
-      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
     volumes:
       - spark_models:/app/models
       - spark_output:/app/output
@@ -70,6 +70,8 @@ services:
       - SPARK_EXECUTOR_MEMORY=${SPARK_EXECUTOR_MEMORY:-768m}
       - GEOHASH_PRECISION=6
       - MIN_BUSINESS_DAYS=3650
+    ports:
+      - "4040:4040"   # UI de la aplicación Spark; con `run` hace falta --service-ports
     volumes:
       - spark_models:/app/models
       - spark_output:/app/output
@@ -119,6 +121,22 @@ services:
     depends_on:
       dataset:
         condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+    networks:
+      - lifemap-net
+
+  # Punto 3: vida de cada negocio (días-negocio, evento, censura) y GeoJSON. Corre después de `ingest`
+  # y antes de los jobs de Spark; se puede repetir sin dañar los datos:
+  #   docker compose --profile jobs run --rm business-life
+  business-life:
+    image: lifemap-ingest:latest
+    profiles: ["jobs"]
+    command: python process_business_life.py
+    restart: "no"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+    depends_on:
       mongodb:
         condition: service_healthy
     networks:
