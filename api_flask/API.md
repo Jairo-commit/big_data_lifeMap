@@ -83,6 +83,10 @@ curl -s $API/health | jq
 Expected: `"status": "ok"`, `"mongodb": "healthy"`, and `sentiment_model` is `loaded`,
 `not_loaded` (trained, loads on the first `/predict`) or `not_trained`.
 
+`status` is `"degraded"` when MongoDB is down (HTTP 503) or when a trained model cannot be
+loaded (`sentiment_model` starts with `error:`; HTTP stays 200 because the other endpoints still
+work, but `/predict` answers 503).
+
 ### `GET /businesses/near`: businesses around a point (`$near`)
 
 ```bash

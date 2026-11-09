@@ -43,7 +43,7 @@ from queries import (
     within_query,
     zone_summary_pipeline,
 )
-from sentiment import ModelNotAvailable, SentimentModel
+from sentiment import ModelNotAvailable, SentimentModel, overall_status
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("lifemap-api")
@@ -103,9 +103,12 @@ def health_check():
         mongo_status = f"unhealthy: {e!s}"
 
     healthy = mongo_status == "healthy"
+    model_status = model.status()
+    # 503 solo si MongoDB falla: con el modelo roto la API sigue sirviendo el resto de endpoints y
+    # el healthcheck de Docker no debe tumbar el despliegue; el fallo se ve en `status`.
     return jsonify({
-        "status": "ok" if healthy else "degraded",
-        "services": {"mongodb": mongo_status, "sentiment_model": model.status(), "api": "healthy"},
+        "status": overall_status(mongo_status, model_status),
+        "services": {"mongodb": mongo_status, "sentiment_model": model_status, "api": "healthy"},
         "commit_hash": os.getenv("GIT_COMMIT", "unknown"),
     }), 200 if healthy else 503
 
