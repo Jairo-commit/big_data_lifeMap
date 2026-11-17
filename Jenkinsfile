@@ -1,6 +1,7 @@
 // LifeMap CI/CD (Multibranch Pipeline, see jenkins/JENKINS.md).
 // - CI, on pull requests into main and on main: Install → Lint → Test.
 // - CD, on main only: Build images → API tests (staging) → Deploy → Ingest → Business life → Spark jobs.
+//   Deploy also starts Kafka and creates the `reviews` topic (Entrega 2).
 // Steps run in order; if one fails the build stops and nothing after it runs.
 
 pipeline {
@@ -55,6 +56,8 @@ pipeline {
                         // One image at a time: lifemap-spark (spark-master, spark-worker, spark-jobs) and the API
                         sh 'docker compose --profile jobs build spark-master'
                         sh 'docker compose build api'
+                        // Entrega 2: Kafka producer (the broker uses the official apache/kafka image)
+                        sh 'docker compose --profile streaming build producer'
                         // Downloads the Yelp dataset into the image (credential `kaggle`) unless the layer is cached
                         withCredentials([usernamePassword(credentialsId: 'kaggle',
                                 usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
@@ -101,7 +104,7 @@ pipeline {
                     steps {
                         // The README commands, one at a time, on the deployed stack
                         sh '$PROD up -d --wait spark-master spark-worker'
-                        sh '$PROD --profile jobs run --rm spark-jobs spark-submit /app/sentiment_model.py'         // point 4
+                        sh '$PROD --profile jobs run --rm spark-jobs spark-submit /app/sentiment_model.py'         // point 4 (only reviews before the cutoff T)
                         sh '$PROD --profile jobs run --rm spark-jobs spark-submit /app/closure_rates.py'           // point 5
                         sh '$PROD --profile jobs run --rm spark-jobs spark-submit /app/load_balancing.py --reps 3' // point 6
                         // Stops only Spark and Dask (`stop` without names would also stop mongodb and the API)

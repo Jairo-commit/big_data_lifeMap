@@ -15,3 +15,9 @@ services:
     profiles: ["ingest"]
   ingest:
     profiles: ["ingest"]
+  # Kafka (Entrega 2) is not needed either, and its port would clash with the deployed stack
+  kafka:
+    profiles: ["streaming"]
+    ports: !reset []
+  kafka-init:
+    profiles: ["streaming"]

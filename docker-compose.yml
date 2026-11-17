@@ -1,5 +1,5 @@
 # Memoria: este PC tiene ~3,7 GB para Docker (WSL), así que `docker compose up` solo arranca lo que
-# corre siempre (mongodb y api). Spark y Dask están en perfiles y se arrancan solo para los jobs:
+# corre siempre (mongodb, api y, desde la Entrega 2, kafka). Spark y Dask están en perfiles y se arrancan solo para los jobs:
 #   docker compose --profile jobs run --rm spark-jobs spark-submit /app/<job>.py   (arranca Spark)
 #   docker compose stop spark-master spark-worker dask-scheduler dask-worker-1 dask-worker-2   (lo apaga al terminar;
 #   sin nombres, `stop` apagaría también mongodb y api)
@@ -70,11 +70,14 @@ services:
       - SPARK_EXECUTOR_MEMORY=${SPARK_EXECUTOR_MEMORY:-768m}
       - GEOHASH_PRECISION=6
       - MIN_BUSINESS_DAYS=3650
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - KAFKA_TOPIC=${KAFKA_TOPIC:-reviews}
     ports:
       - "4040:4040"   # UI de la aplicación Spark; con `run` hace falta --service-ports
     volumes:
       - spark_models:/app/models
       - spark_output:/app/output
+      - spark_checkpoints:/app/checkpoints   # checkpoints del streaming (offsets de Kafka)
     depends_on:
       - mongodb
       - spark-master
@@ -139,6 +142,86 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
+    networks:
+      - lifemap-net
+
+  # Entrega 2: broker Kafka de un solo nodo en modo KRaft (broker y controlador, sin ZooKeeper).
+  # Dentro de la red de Compose se usa kafka:9092; desde el host, localhost:9094.
+  kafka:
+    image: apache/kafka:3.9.1
+    hostname: kafka
+    environment:
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk   # UUID en base64 (22 caracteres), fijo para que el volumen sirva tras reiniciar
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0
+      # El topic `reviews` lo crea kafka-init con sus particiones; no se crean topics por accidente
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=false
+      - KAFKA_LOG_DIRS=/var/lib/kafka/data
+    ports:
+      - "9094:9094"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    networks:
+      - lifemap-net
+
+  # Crea el topic `reviews` (3 particiones; la clave de cada mensaje es business_id) y termina.
+  # Se puede repetir: --if-not-exists no toca un topic que ya existe.
+  kafka-init:
+    image: apache/kafka:3.9.1
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - >-
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists
+        --topic ${KAFKA_TOPIC:-reviews} --partitions ${KAFKA_PARTITIONS:-3} --replication-factor 1
+        && /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe --topic ${KAFKA_TOPIC:-reviews}
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - lifemap-net
+
+  # Productor con reloj acelerado: publica en orden de fecha las reseñas desde la fecha de corte T
+  # (CUTOFF_DATE de spark_batch/lifemap_common.py, la misma constante con la que se entrena: esas
+  # reseñas no se usan para entrenar), a SPEED_DAYS días simulados cada SPEED_SECONDS segundos.
+  #   docker compose --profile streaming run --rm producer
+  producer:
+    # Contexto = raíz del repo para copiar también spark_batch/lifemap_common.py (fecha de corte y
+    # conexiones); kafka_streaming/Dockerfile.dockerignore deja en el contexto solo esos dos archivos
+    build:
+      context: .
+      dockerfile: kafka_streaming/Dockerfile
+    image: lifemap-producer:latest
+    profiles: ["streaming"]
+    restart: "no"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - KAFKA_TOPIC=${KAFKA_TOPIC:-reviews}
+      - SPEED_DAYS=${SPEED_DAYS:-30}
+      - SPEED_SECONDS=${SPEED_SECONDS:-10}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - lifemap-net
 
@@ -211,6 +294,10 @@ volumes:
   spark_output:
     driver: local
   yelp_data:
+    driver: local
+  kafka_data:
+    driver: local
+  spark_checkpoints:
     driver: local
 
 networks:

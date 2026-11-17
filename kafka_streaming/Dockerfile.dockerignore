@@ -1,0 +1,5 @@
+# Ignore propio de kafka_streaming/Dockerfile (BuildKit), que se construye desde la raíz del repo:
+# solo entran al contexto los archivos que copia la imagen.
+*
+!kafka_streaming/producer.py
+!spark_batch/lifemap_common.py
