@@ -69,3 +69,67 @@ La UI del maestro de Spark queda en http://localhost:8081.
 - Mínimo de días-negocio para comparar tasas: 3650 (`MIN_BUSINESS_DAYS`). Con 10 años-negocio un
   solo cierre equivale a una tasa de 10 %; con menos exposición la tasa sería ruido de grupos pequeños.
   Los grupos bajo el mínimo se guardan con `meets_min_days = false` en vez de eliminarse.
+
+## Entrega 2: streaming con Kafka
+
+```
+MongoDB (reseñas con date >= T) --> producer (reloj acelerado) --> Kafka, topic `reviews`
+    (3 particiones, clave business_id) --> Spark Structured Streaming + modelo `sentiment_best`
+    --> MongoDB, colección `review_predictions`
+```
+
+- **Kafka** (`apache/kafka`, un nodo en modo KRaft, sin ZooKeeper) arranca con `docker compose up`
+  junto a mongodb y la API, que siguen en las mismas URL. `kafka-init` crea el topic `reviews` con 3
+  particiones (`KAFKA_PARTITIONS`) y termina. Dentro de Compose el broker es `kafka:9092`; desde el
+  host, `localhost:9094`.
+- **Fecha de corte T = 2021-01-01**: la constante `CUTOFF_DATE` de `spark_batch/lifemap_common.py`,
+  la única definición en todo el código. La usan el entrenamiento (date < T), el productor (date >= T; su
+  imagen copia ese archivo) y la inferencia en streaming (descarta lo anterior a T), así que no pueden
+  usar fechas distintas; para cambiarla se edita ahí y se reconstruyen las
+  imágenes y el modelo. Simula un despliegue real: el
+  modelo aprende solo del pasado (reseñas con fecha < T) y en streaming clasifica reseñas "futuras" que
+  nunca vio. Si el streaming repitiera reseñas del entrenamiento habría fuga de datos y la exactitud
+  en streaming no diría nada sobre datos nuevos. Se usa todo el dataset, sin muestreo: lo anterior a T
+  entrena y lo posterior a T se transmite.
+- **Productor** (`kafka_streaming/producer.py`): lee de MongoDB las reseñas con fecha >= T en orden de
+  fecha y las publica con clave `business_id` (todas las reseñas de un negocio van a la misma
+  partición, en orden). El reloj acelerado publica cada reseña en el instante
+  `(fecha - T) / SPEED_DAYS días * SPEED_SECONDS`: por defecto un mes de reseñas cada 10 segundos.
+- **Inferencia** (`spark_batch/streaming_inference.py`): Structured Streaming lee el topic, carga
+  `sentiment_best` de la Entrega 1 sin reentrenarlo, clasifica cada reseña y la escribe en
+  `review_predictions` (upsert por `review_id`, así un lote repetido no duplica). El checkpoint
+  (volumen `spark_checkpoints`) guarda los offsets: al reiniciar continúa donde iba.
+
+```bash
+docker compose build
+docker compose up -d                       # mongodb, api, kafka (+ topic reviews) e ingesta
+
+# El modelo se entrena solo con las reseñas anteriores a T (una vez)
+docker compose up -d spark-master spark-worker
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/sentiment_model.py
+
+# Terminal 1: inferencia en streaming (Ctrl+C para detenerla; --timeout 600 la detiene sola)
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/streaming_inference.py
+
+# Terminal 2: productor (un mes cada 10 s). Otra velocidad: SPEED_DAYS=7 SPEED_SECONDS=5 docker compose ...
+docker compose --profile streaming run --rm producer
+# o con argumentos: ... run --rm producer --speed-days 30 --speed-seconds 10 --end 2021-07-01 --limit 10000
+```
+
+Comprobaciones:
+
+```bash
+# Topic con 3 particiones y mensajes repartidos por clave
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic reviews
+docker compose exec kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server localhost:9092 --topic reviews
+
+# Predicciones en MongoDB
+docker compose exec mongodb mongosh --quiet lifemap_db --eval \
+  'db.review_predictions.countDocuments(); db.review_predictions.findOne()'
+```
+
+- Volver a procesar el topic desde el principio: `streaming_inference.py --reset` (borra el checkpoint).
+- Volver a publicar: el productor se puede ejecutar otra vez; como `review_predictions` usa
+  `review_id` como `_id`, las reseñas repetidas reemplazan a las anteriores.
+- Cada documento de `review_predictions` tiene `sentiment`, `probabilities`, `true_sentiment` (según
+  las estrellas), `correct`, la fecha de la reseña y la partición y el offset de Kafka.

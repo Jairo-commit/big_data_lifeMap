@@ -8,3 +8,4 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "spark_batch"))
 sys.path.insert(0, str(ROOT / "api_flask"))
 sys.path.insert(0, str(ROOT / "dask_ingestion"))
+sys.path.insert(0, str(ROOT / "kafka_streaming"))

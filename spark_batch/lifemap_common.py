@@ -12,6 +12,15 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongodb:27017/")
 SPARK_MASTER_URL = os.getenv("SPARK_MASTER_URL")
 MODELS_DIR = os.getenv("MODELS_DIR", "/app/models")
 OUTPUT_DIR = os.getenv("OUTPUT_DIR", "/app/output")
+CHECKPOINTS_DIR = os.getenv("CHECKPOINTS_DIR", "/app/checkpoints")
+
+# Entrega 2: fecha de corte T, constante y única para todo el proyecto. El modelo se entrena con las
+# reseñas de fecha < T y las de fecha >= T se reservan para el productor de Kafka, que las publica
+# como si fueran reseñas nuevas. No se configura por variable de entorno ni por argumento: así el
+# entrenamiento y el streaming no pueden usar fechas distintas. El productor importa este módulo.
+CUTOFF_DATE = "2021-01-01"
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "reviews")
 
 # Precisión del geohash: 6 caracteres son celdas de ~1,2 km x 0,6 km (nivel de barrio).
 GEOHASH_PRECISION = int(os.getenv("GEOHASH_PRECISION", "6"))
@@ -164,16 +173,18 @@ def read_collection(spark, name):
     )
 
 
-def write_collection(df, name, mode="overwrite"):
-    """Escribe un DataFrame en una colección de lifemap_db."""
-    (
+def write_collection(df, name, mode="overwrite", **options):
+    """Escribe un DataFrame en una colección de lifemap_db (options: opciones extra del conector)."""
+    writer = (
         df.write.format("mongodb")
         .mode(mode)
         .option("connection.uri", MONGO_URI)
         .option("database", DB_NAME)
         .option("collection", name)
-        .save()
     )
+    for clave, valor in options.items():
+        writer = writer.option(clave, valor)
+    writer.save()
 
 
 def save_documents(name, documents):

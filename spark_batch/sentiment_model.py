@@ -12,7 +12,7 @@ Decisiones clave:
   cada clase y se reportan métricas por clase, no solo accuracy.
 
 Uso:
-    spark-submit /app/sentiment_model.py [--sample-fraction 0.1] [--cutoff 2020-01-01]
+    spark-submit /app/sentiment_model.py [--sample-fraction 0.1]   (fecha de corte T: CUTOFF_DATE de lifemap_common)
 """
 
 import argparse
@@ -27,6 +27,7 @@ from pyspark.ml.feature import IDF, HashingTF, RegexTokenizer, SQLTransformer, S
 from pyspark.sql import functions as F
 
 from lifemap_common import (
+    CUTOFF_DATE,
     DB_NAME,
     MODELS_DIR,
     MONGO_URI,
@@ -45,9 +46,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Entrena los modelos de sentimiento de LifeMap")
     parser.add_argument("--sample-fraction", type=float, default=1.0,
                         help="fracción de reseñas a usar (1.0 = todas)")
-    parser.add_argument("--cutoff", default=None,
-                        help="fecha de corte T (YYYY-MM-DD): se descartan las reseñas posteriores, "
-                             "que la Entrega 2 reserva para el streaming")
     return parser.parse_args()
 
 
@@ -135,9 +133,10 @@ def run_sentiment_pipeline():
     print("Cargando reseñas desde MongoDB...")
     df = read_collection(spark, "reviews").select("review_id", "business_id", "stars", "text", "date")
     df = df.where(F.col("text").isNotNull() & F.col("stars").isNotNull())
-    if args.cutoff:
-        # Las reseñas posteriores a T se reservan para el streaming de la Entrega 2.
-        df = df.where(F.to_date("date") <= F.lit(args.cutoff).cast("date"))
+    # Las reseñas desde T (CUTOFF_DATE) se reservan para el streaming de la Entrega 2 (el productor
+    # publica date >= T): el modelo nunca ve las reseñas que luego clasifica en streaming.
+    df = df.where(F.col("date").cast("timestamp") < F.lit(CUTOFF_DATE).cast("timestamp"))
+    print(f"Fecha de corte T = {CUTOFF_DATE}: se entrena solo con reseñas anteriores a T")
     if args.sample_fraction < 1.0:
         df = df.sample(withReplacement=False, fraction=args.sample_fraction, seed=42)
     df = df.withColumn("label", sentiment_label(F.col("stars").cast("double"))).cache()
@@ -192,7 +191,7 @@ def run_sentiment_pipeline():
         "fecha": datetime.now(timezone.utc).isoformat(),
         "reseñas": total,
         "distribucion_clases": distribucion,
-        "cutoff": args.cutoff,
+        "cutoff": CUTOFF_DATE,
         "sample_fraction": args.sample_fraction,
         "mejor_modelo": mejor,
         "modelos": resultados,
