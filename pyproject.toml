@@ -24,7 +24,7 @@ line-length = 120
 # Python 3.8: el de la imagen apache/spark:3.5.5-python3 (jobs de Spark y API)
 target-version = "py38"
 # Directories whose modules are imported as first-party (tests import lifemap_common)
-src = ["spark_batch", "api_flask", "dask_ingestion", "tests"]
+src = ["spark_batch", "api_flask", "dask_ingestion", "kafka_streaming", "tests"]
 
 [tool.ruff.lint]
 # /health catches any exception on purpose: it reports MongoDB as unhealthy instead of failing
