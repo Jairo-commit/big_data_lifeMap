@@ -237,6 +237,8 @@ curl -s -X POST $API/predict -H 'Content-Type: application/json' \
 
 Expected: `sentiment` (`negativo`, `neutral` or `positivo`) and the probability of each class.
 The first call after starting the API takes a few seconds: it loads the model.
+The response also has `model_version` (`uid@timestamp` of the model that answered), and `/health` reports `model_versions.sentiment_best` (`null` until the
+first prediction loads the model). Jenkins checks that this is the version registered in `model_registry`.
 
 ## 5. Errors you should see
 

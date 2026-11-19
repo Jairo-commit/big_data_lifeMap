@@ -7,7 +7,7 @@ deployed on this PC.
 | Event | Job | Stages |
 |---|---|---|
 | Pull request into `main` (opened, or new commits) | `PR-<number>` | Install → Lint → Test |
-| Change that reaches `main` | `main` | Install → Lint → Test → Build images → Start services → API tests → Deploy |
+| Change that reaches `main` | `main` | Install → Lint → Test → Build images → API tests → Deploy → Ingest → Business life → Spark jobs → Streaming tests |
 
 Stages run in order and the build stops at the first failure. **If any test fails, nothing is
 deployed.** Pushes to other branches build nothing.
@@ -191,3 +191,16 @@ rule** for `main`: ✅ *Require a pull request before merging*, ✅ *Require sta
 - **`Failed to spawn: ruff` / `pytest`**: add them with `uv add --dev ruff pytest`.
 - **A CI stage fails**: run the same command locally (`uv sync --locked`, `uv run ruff check .`,
   `uv run pytest`).
+
+## Streaming tests (Entrega 2, point 9)
+
+The last stage of the `main` build checks the streaming flow and the model versions. If either test fails, the build fails.
+
+- **Model version** (`jenkins/model-version-test.sh`): `spark_batch/register_models.py` stores the version of each saved model (`uid@timestamp`
+  from its metadata, plus the SHA-256 of its files) in the MongoDB collection `model_registry`. The test then checks that the model on disk (what the
+  streaming jobs load) is the registered one and that the model the API answers with (`/predict`) and reports (`/health`) is the registered one too. It
+  fails if a model was retrained and not registered, or if its files changed.
+- **Smoke test** (`jenkins/streaming-smoke-test.sh`): publishes 100 synthetic reviews to a separate topic (`reviews-smoke`), runs the real streaming inference
+  job on it and checks that all 100 appear **classified** in MongoDB (valid class, probabilities that add up to 1, date, and the model agrees with the stars
+  of these clear-cut reviews). It uses its own topic, checkpoint and collection (`review_predictions_smoke`) and removes them at the end, so it never touches
+  the real data. To run it by hand: `PROD="docker compose" jenkins/streaming-smoke-test.sh`.

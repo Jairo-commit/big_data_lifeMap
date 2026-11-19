@@ -6,6 +6,7 @@ crudo sin reentrenar. Si el modelo aún no se ha entrenado, /predict responde 50
 entrenar, se recarga en la siguiente predicción.
 """
 
+import json
 import logging
 import os
 import threading
@@ -16,6 +17,23 @@ MODEL_PATH = os.getenv("MODEL_PATH", "/app/models/sentiment_best")
 CLASSES = {0: "negativo", 1: "neutral", 2: "positivo"}
 
 log = logging.getLogger(__name__)
+
+
+def read_model_version(path):
+    """`uid@timestamp` del metadata de un PipelineModel guardado, o None si no hay modelo.
+
+    Es la misma función de spark_batch/model_version.py (la API se construye aparte y no ve ese módulo);
+    tests/test_model_version.py comprueba que dan el mismo resultado.
+    """
+    metadata_dir = os.path.join(path, "metadata")
+    if not os.path.isdir(metadata_dir):
+        return None
+    parts = sorted(name for name in os.listdir(metadata_dir) if name.startswith("part-"))
+    if not parts:
+        return None
+    with open(os.path.join(metadata_dir, parts[0]), encoding="utf-8") as archivo:
+        metadata = json.loads(archivo.readline())
+    return f"{metadata['uid']}@{metadata['timestamp']}"
 
 
 def overall_status(mongo_status, model_status, kafka_status="not_configured"):
@@ -48,6 +66,7 @@ class SentimentModel:
         self._spark = None
         self._model = None
         self._loaded_mtime = None
+        self._loaded_version = None
         self._error = None
 
     def _metadata_mtime(self):
@@ -84,14 +103,20 @@ class SentimentModel:
                     from pyspark.ml import PipelineModel
 
                     self._session()
-                    log.info("Cargando el modelo de sentimiento desde %s", self.path)
+                    version = read_model_version(self.path)  # antes de cargar: es la versión de lo que se carga
+                    log.info("Cargando el modelo de sentimiento %s desde %s", version, self.path)
                     self._model = PipelineModel.load(self.path)
                     self._loaded_mtime = mtime
+                    self._loaded_version = version
                     self._error = None
                 except Exception as e:  # el error se reporta en /health y /predict
                     self._error = str(e)
                     raise ModelNotAvailable(f"no se pudo cargar el modelo: {e}") from e
         return self._model
+
+    def version(self):
+        """Versión (`uid@timestamp`) del modelo que esta API tiene cargado en memoria; None si todavía no cargó ninguno."""
+        return self._loaded_version if self._model is not None else None
 
     def status(self):
         if self._model is not None:

@@ -48,6 +48,22 @@ pedir como CSV con `?format=csv`: es lo que consume el dashboard de Power BI de 
 paso a paso para armar las cuatro visualizaciones (mapa de hotspots, alertas activas, curvas de supervivencia y evolución del % negativo). Cada endpoint está
 documentado, con ejemplos, en [`api_flask/API.md`](api_flask/API.md).
 
+## Entrega 2: pruebas del flujo en Jenkins (punto 9)
+
+La última etapa del pipeline (*Streaming tests*) comprueba dos cosas, y si alguna falla el build se detiene:
+
+- **El modelo cargado es el versionado**: `register_models.py` guarda en `model_registry` la versión de cada modelo (`uid@timestamp` de su metadata) y la suma de
+  verificación SHA-256 de sus archivos; `jenkins/model-version-test.sh` comprueba que el modelo en disco (el que cargan los jobs de streaming) y el que responde la API
+  (`model_version` en `/predict` y `model_versions` en `/health`) son los registrados. Falla si se reentrenó sin registrar o si el modelo se alteró.
+- **Prueba de humo del flujo** (`jenkins/streaming-smoke-test.sh`): publica 100 reseñas sintéticas en un topic aparte, las clasifica con el job de inferencia real y
+  verifica que las 100 aparecen **clasificadas en MongoDB**. Usa su propio topic, checkpoint y colección y los borra al terminar: no toca los datos reales.
+
+```bash
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/register_models.py   # registra las versiones de los modelos
+bash jenkins/model-version-test.sh                                                         # el modelo cargado es el versionado
+bash jenkins/streaming-smoke-test.sh                                                       # 100 mensajes -> Kafka -> Spark -> MongoDB (~3 min)
+```
+
 ## Jobs de Spark (Entrega 1, puntos 4 a 6)
 
 Requieren que la ingesta y la vida de los negocios (puntos 2 y 3) ya estén en MongoDB. La vida de

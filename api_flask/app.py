@@ -189,6 +189,8 @@ def health_check():
             "api": "healthy",
         },
         "commit_hash": os.getenv("GIT_COMMIT", "unknown"),
+        # Versión (`uid@timestamp`) del modelo que cargó esta API; null hasta la primera predicción
+        "model_versions": {"sentiment_best": model.version()},
     }
     if kafka_monitor.configured:
         body["kafka"] = {"topic": kafka.get("topic"), "end_offsets": kafka.get("end_offsets", {})}
@@ -451,6 +453,7 @@ def predict_sentiment():
                 "spark-submit /app/sentiment_model.py",
             }
         ), 503
+    result["model_version"] = model.version()  # qué modelo respondió: lo comprueba la prueba de versionado de Jenkins
     return jsonify(result)
 
 

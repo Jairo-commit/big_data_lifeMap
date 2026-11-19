@@ -1,6 +1,6 @@
 // LifeMap CI/CD (Multibranch Pipeline, see jenkins/JENKINS.md).
 // - CI, on pull requests into main and on main: Install → Lint → Test.
-// - CD, on main only: Build images → API tests (staging) → Deploy → Ingest → Business life → Spark jobs.
+// - CD, on main only: Build images → API tests (staging) → Deploy → Ingest → Business life → Spark jobs → Streaming tests.
 //   Deploy also starts Kafka and creates the `reviews` topic (Entrega 2).
 // Steps run in order; if one fails the build stops and nothing after it runs.
 
@@ -109,6 +109,24 @@ pipeline {
                         sh '$PROD --profile jobs run --rm spark-jobs spark-submit /app/load_balancing.py --reps 3' // point 6
                         // Stops only Spark and Dask (`stop` without names would also stop mongodb and the API)
                         sh '$PROD stop spark-master spark-worker dask-scheduler dask-worker-1 dask-worker-2'
+                    }
+                }
+                stage('Streaming tests') {
+                    steps {
+                        // Entrega 2, point 9. Spark and Kafka are needed; the API is already deployed with the new image
+                        sh '$PROD up -d --wait spark-master spark-worker kafka'
+                        // Stores the version (uid@timestamp + SHA-256) of the models the Spark jobs just saved
+                        sh '$PROD --profile jobs run --rm spark-jobs spark-submit /app/register_models.py'
+                        // The model on disk and the one the API answers with are the registered one
+                        sh 'jenkins/model-version-test.sh'
+                        // Smoke test: 100 messages through Kafka -> Spark -> MongoDB, all of them classified
+                        sh 'jenkins/streaming-smoke-test.sh'
+                    }
+                    post {
+                        always {
+                            // Stops only Spark (`stop` without names would also stop mongodb, kafka and the API)
+                            sh '$PROD stop spark-master spark-worker || true'
+                        }
                     }
                 }
             }
