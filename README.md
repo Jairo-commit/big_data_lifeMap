@@ -209,3 +209,31 @@ docker compose --profile jobs run --rm spark-jobs spark-submit /app/survival_km.
 docker compose exec mongodb mongosh --quiet lifemap_db --eval \
   'db.survival_by_zone.find({}, {group: 1, n_businesses: 1, n_events: 1, median_years: 1, survival_5y: 1}).toArray()'
 ```
+
+### Punto 6: modelo de riesgo de cierre
+
+`risk_model.py` es el patrón de KafkaMed aplicado a negocios: con los datos **anteriores a T** se construyen variables por negocio y un
+clasificador estima la probabilidad de que cierre en los 12 meses siguientes (la lógica pura está en `spark_batch/risk_logic.py`).
+
+- **Población**: negocios que existían en T (tienen reseñas anteriores a T) y tuvieron actividad desde T; los que no tuvieron actividad
+  después de T se excluyen. **Etiqueta**: 1 si el negocio está cerrado (`is_open = 0`) y su última reseña cae entre T y T + 12 meses;
+  0 si sigue con actividad después de ese plazo o sigue abierto.
+- **Variables** (solo con reseñas < T): sentimiento medio (positiva +1, neutral 0, negativa −1), tendencia del % negativo en los últimos
+  6 meses (3 meses recientes menos los 3 anteriores, en puntos; 0 si alguna mitad tiene menos de 5 reseñas), estrellas medias, número de
+  reseñas, edad en T y **densidad de competidores de la misma categoría a 500 m con `$geoNear`**. Las estrellas y el número de reseñas se
+  recalculan con las reseñas < T: los campos `stars` y `review_count` del negocio son los del corte del dataset e incluirían el futuro.
+- **Modelo**: partición 60/20/20 **por negocio** (hash de `business_id`), regresión logística y GBT con pesos de clase (el cierre es la
+  clase rara), elegido por **AUC-PR** en validación; el **umbral** maximiza el F1 en validación. En prueba se reportan **AUC-ROC,
+  AUC-PR (frente a la prevalencia, que es lo que lograría un modelo sin información) y recall**, precision y matriz de confusión en ese
+  umbral. Como control, un modelo entrenado con las etiquetas barajadas (10 barajaduras, se promedian) no debe aprender nada: su AUC-ROC medio debe ser ~0,5 y el del modelo real debe superarlo. La ausencia de fuga temporal se comprueba aparte recalculando las variables con las reseñas < T.
+- Resultados: `risk_features` (variables por negocio), `risk_scores` (probabilidad de cierre y alerta con la ubicación del negocio),
+  `model_metrics` (`_id: "risk"`) y los modelos en `/app/models/risk_best`, `risk_logistic_regression` y `risk_gbt`.
+
+```bash
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/risk_model.py
+# Volver a entrenar sin repetir la agregación de reseñas ni los competidores (~2 min en lugar de ~30):
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/risk_model.py --from-features
+
+docker compose exec mongodb mongosh --quiet lifemap_db --eval \
+  'db.model_metrics.findOne({_id: "risk"}, {mejor_modelo: 1, umbral: 1, prueba: 1})'
+```
