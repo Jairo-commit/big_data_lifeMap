@@ -145,3 +145,40 @@ docker compose exec mongodb mongosh --quiet lifemap_db --eval \
   `review_id` como `_id`, las reseñas repetidas reemplazan a las anteriores.
 - Cada documento de `review_predictions` tiene `sentiment`, `probabilities`, `true_sentiment` (según
   las estrellas), `correct`, la fecha de la reseña y la partición y el offset de Kafka.
+
+### Punto 4: ventanas geoespaciales y hotspots
+
+```
+Kafka (reviews) --> Spark Structured Streaming + sentiment_best --> celda de geohash del negocio
+    --> ventana de 30 días con watermark de 7 días sobre `date` --> MongoDB, colección `geohash_windows`
+```
+
+- **Tiempo del evento**: las ventanas y el watermark usan el campo `date` de la reseña (cuándo se escribió), no el
+  momento en que llega a Kafka o a Spark. El watermark de 7 días cierra una ventana cuando la fecha más reciente
+  vista supera su fin en 7 días y descarta lo que llegue más tarde, así el estado en memoria queda acotado.
+- **Alineadas con T**: las ventanas empiezan exactamente en T (`geo_windows.window_offset_days`: 28 días de desplazamiento
+  respecto a 1970 con T = 2021-01-01), el mismo reloj del productor. Modo `append`: solo se emiten ventanas cerradas
+  (las últimas no cierran hasta que llegue una reseña posterior). Una reseña repetida no se cuenta dos veces
+  (`dropDuplicates(review_id)` dentro del watermark).
+- Cada ventana cerrada se guarda con el conteo y el porcentaje de reseñas negativas (según el modelo; las negativas por
+  estrellas se guardan aparte para contrastar), **la geometría de su celda** (índice 2dsphere, consultable con `$geoWithin` y
+  `$geoIntersects`) y la decisión de hotspot. El `_id` es `celda|inicio`: reprocesar no duplica.
+- **Hotspot**: una celda lo es cuando su % negativo sube frente a la ventana anterior de la misma celda al menos `threshold_pp`
+  puntos y ambas ventanas tienen al menos `min_reviews` reseñas (con 20 reseñas el error estándar de un porcentaje ya llega a
+  ±11 puntos). **El umbral sale de los datos**: `calibrate_hotspots.py` mide, con las reseñas anteriores a T, cuánto cambia
+  normalmente el % negativo de una celda de un mes al siguiente y toma el **percentil 95** de esas variaciones (queda en
+  `hotspot_config`): un hotspot es una subida que solo ocurre 1 de cada 20 veces en condiciones normales. Cada ventana guarda
+  `delta_pp`, `is_hotspot` y `hotspot_reason` (hotspot, bajo_umbral, pocas_resenas, sin_ventana_previa...).
+
+```bash
+docker compose up -d mongodb kafka kafka-init spark-master spark-worker
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/calibrate_hotspots.py      # umbral con el histórico < T
+
+# Terminal 1: ventanas en streaming (--reset borra el checkpoint y las ventanas; --timeout la detiene sola)
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/streaming_windows.py --reset --timeout 300
+# Terminal 2: productor (3 s por mes simulado hasta septiembre de 2021)
+docker compose --profile streaming run --rm producer --speed-seconds 3 --end 2021-09-01
+
+docker compose exec mongodb mongosh --quiet lifemap_db --eval \
+  'db.geohash_windows.find({is_hotspot: true}, {geohash: 1, window_start: 1, pct_negative: 1, delta_pp: 1}).sort({delta_pp: -1}).limit(5)'
+```
