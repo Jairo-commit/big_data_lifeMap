@@ -237,3 +237,34 @@ docker compose --profile jobs run --rm spark-jobs spark-submit /app/risk_model.p
 docker compose exec mongodb mongosh --quiet lifemap_db --eval \
   'db.model_metrics.findOne({_id: "risk"}, {mejor_modelo: 1, umbral: 1, prueba: 1})'
 ```
+
+### Punto 7: alertas de riesgo en streaming
+
+```
+Kafka (reviews) --> Spark Structured Streaming + foreachBatch --> variables al instante t --> modelo de riesgo
+    --> MongoDB: alerts (geometría, probabilidad, fecha), alert_state y stream_progress
+```
+
+`streaming_alerts.py` aplica el modelo de riesgo del punto 6 al flujo. En cada micro-lote (`foreachBatch`), para los negocios que recibieron reseñas:
+
+1. **Actualiza sus variables** (`alerts_logic.features_at`): las seis del modelo (sentimiento medio, tendencia del % negativo en los últimos 6 meses,
+   estrellas medias, número de reseñas, edad y competidores a 500 m) al instante de su última reseña, **solo con reseñas de fecha <= t**. La parte anterior
+   a T sale de `risk_features` (y de `reviews` con fecha < T para la ventana de la tendencia); la posterior, de las reseñas que llegan por Kafka, guardadas
+   por negocio y por `review_id` en `alert_state`: repetir un lote no las cuenta dos veces.
+2. **Los puntúa** con `risk_best` (el `PipelineModel` guardado, sin reentrenar).
+3. **Guarda en `alerts`** los que superan el umbral (el que eligió el entrenamiento, `model_metrics`; `--threshold` lo anula). Cada negocio es un documento
+   (`_id = business_id`) con su **geometría** (Point con índice 2dsphere), la **probabilidad**, la **fecha** del evento, el umbral y las variables con las que se
+   puntuó. Si el negocio ya estaba en alerta se actualiza; si baja del umbral se marca `active: false` con su `cleared_date`.
+4. Guarda en `stream_progress` los offsets procesados por partición: es la base del retraso del consumidor.
+
+Solo se evalúan los negocios de la población del modelo (los que existían en T); los demás se cuentan en el log y se ignoran. Una alerta es un criterio de
+prioridad (el modelo tiene una señal moderada), no una sentencia.
+
+```bash
+docker compose up -d mongodb kafka kafka-init spark-master spark-worker
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/streaming_alerts.py --reset --timeout 900   # --reset: empieza de cero
+docker compose --profile streaming run --rm producer --speed-seconds 3 --end 2021-09-01                          # en otra terminal
+
+docker compose exec mongodb mongosh --quiet lifemap_db --eval \
+  'db.alerts.find({active: true}, {business_id: 1, city: 1, probability: 1, alert_date: 1}).sort({probability: -1}).limit(5)'
+```
