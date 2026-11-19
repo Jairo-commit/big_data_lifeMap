@@ -11,6 +11,7 @@ Endpoints:
 - GET  /stats/closure          tasas de cierre por categoría o por celda de geohash.
                                by (category | cell), min_days (3650), include_below_min (false),
                                order (desc | asc), limit (20).
+- GET  /models                métricas de los modelos de sentimiento entrenados.
 - POST /predict                sentimiento de un texto nuevo. Cuerpo: {"text": "..."}.
 
 Los errores de parámetros responden 400 con {"error": "..."}.
@@ -30,6 +31,7 @@ from queries import (
     BadRequest,
     clean_json,
     closure_stats_query,
+    format_model_metrics,
     mark_min_days,
     near_query,
     parse_bool,
@@ -181,6 +183,18 @@ def stats_closure():
         "returned": len(rows),
         "results": mark_min_days(rows, min_days),
     })
+
+
+@app.route("/models", methods=["GET"])
+def models_info():
+    """Métricas de los modelos de sentimiento entrenados (las guarda spark_batch/sentiment_model.py)."""
+    info = format_model_metrics(db.model_metrics.find_one({"_id": "sentiment"}))
+    if info is None:
+        return jsonify({
+            "error": "models_not_available",
+            "detail": "aún no hay modelos entrenados: ejecuta spark-submit /app/sentiment_model.py",
+        }), 404
+    return jsonify(clean_json(info))
 
 
 @app.route("/predict", methods=["POST"])

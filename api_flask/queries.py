@@ -342,3 +342,34 @@ def with_distance(business, lon, lat):
     if coordinates and len(coordinates) >= 2:
         business["distance_m"] = round(haversine_m(lon, lat, coordinates[0], coordinates[1]), 1)
     return business
+
+
+def format_model_metrics(doc):
+    """Respuesta de /models a partir del documento que guarda spark_batch/sentiment_model.py.
+
+    Devuelve None si aún no se ha entrenado ningún modelo. Pasa las claves del documento (en
+    español) a las del resto de la API y deja los modelos en el orden en que se guardaron.
+    """
+    if not doc:
+        return None
+    models = {}
+    for name, m in (doc.get("modelos") or {}).items():
+        models[name] = {
+            "accuracy": m.get("accuracy"),
+            "f1_macro": m.get("f1_macro"),
+            "f1_weighted": m.get("f1_weighted"),
+            "per_class": m.get("por_clase") or {},
+            "confusion_matrix": m.get("matriz_confusion") or {},  # filas = clase real
+        }
+    distribution = doc.get("distribucion_clases") or {}
+    return {
+        "task": "sentiment",
+        "trained_at": doc.get("fecha"),
+        "reviews": doc.get("reseñas"),
+        "class_distribution": distribution,
+        "classes": list(distribution),
+        "cutoff": doc.get("cutoff"),
+        "sample_fraction": doc.get("sample_fraction"),
+        "best_model": doc.get("mejor_modelo"),
+        "models": models,
+    }

@@ -43,27 +43,30 @@ TRAIN_PERCENT = 80  # porcentaje de negocios (por hash de business_id) que va a 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Entrena los modelos de sentimiento de LifeMap")
-    parser.add_argument("--sample-fraction", type=float, default=1.0,
-                        help="fracción de reseñas a usar (1.0 = todas)")
-    parser.add_argument("--cutoff", default=None,
-                        help="fecha de corte T (YYYY-MM-DD): se descartan las reseñas posteriores, "
-                             "que la Entrega 2 reserva para el streaming")
+    parser.add_argument("--sample-fraction", type=float, default=1.0, help="fracción de reseñas a usar (1.0 = todas)")
+    parser.add_argument(
+        "--cutoff",
+        default=None,
+        help="fecha de corte T (YYYY-MM-DD): se descartan las reseñas posteriores, "
+        "que la Entrega 2 reserva para el streaming",
+    )
     return parser.parse_args()
 
 
 def build_preprocessing_stages():
     """Etapas de SentimentStream: limpieza, tokenización, stopwords en inglés y TF-IDF."""
     # Limpieza: minúsculas, sin URLs y sin nada que no sea una letra.
-    limpieza = SQLTransformer(statement=(
-        "SELECT *, regexp_replace(regexp_replace(lower(text), 'https?://\\\\S+', ' '), "
-        "'[^a-z\\\\s]', ' ') AS clean_text FROM __THIS__"
-    ))
-    tokenizer = RegexTokenizer(inputCol="clean_text", outputCol="words",
-                               pattern="\\s+", minTokenLength=2)
-    remover = StopWordsRemover(inputCol="words", outputCol="filtered_words",
-                               stopWords=StopWordsRemover.loadDefaultStopWords("english"))
-    hashing_tf = HashingTF(inputCol="filtered_words", outputCol="raw_features",
-                           numFeatures=NUM_FEATURES)
+    limpieza = SQLTransformer(
+        statement=(
+            "SELECT *, regexp_replace(regexp_replace(lower(text), 'https?://\\\\S+', ' '), "
+            "'[^a-z\\\\s]', ' ') AS clean_text FROM __THIS__"
+        )
+    )
+    tokenizer = RegexTokenizer(inputCol="clean_text", outputCol="words", pattern="\\s+", minTokenLength=2)
+    remover = StopWordsRemover(
+        inputCol="words", outputCol="filtered_words", stopWords=StopWordsRemover.loadDefaultStopWords("english")
+    )
+    hashing_tf = HashingTF(inputCol="filtered_words", outputCol="raw_features", numFeatures=NUM_FEATURES)
     idf = IDF(inputCol="raw_features", outputCol="features", minDocFreq=5)
     return [limpieza, tokenizer, remover, hashing_tf, idf]
 
@@ -84,8 +87,7 @@ def evaluate(predictions):
     predictions = predictions.cache()
 
     def metrica(nombre, label=None):
-        evaluator = MulticlassClassificationEvaluator(
-            labelCol="label", predictionCol="prediction", metricName=nombre)
+        evaluator = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName=nombre)
         if label is not None:
             evaluator = evaluator.setMetricLabel(label)
         return evaluator.evaluate(predictions)
@@ -98,9 +100,7 @@ def evaluate(predictions):
             "f1": metrica("fMeasureByLabel", etiqueta),
         }
 
-    filas = (predictions.groupBy("label")
-             .pivot("prediction", list(CLASES))
-             .count().na.fill(0).orderBy("label").collect())
+    filas = predictions.groupBy("label").pivot("prediction", list(CLASES)).count().na.fill(0).orderBy("label").collect()
     matriz = {CLASES[fila["label"]]: {CLASES[c]: int(fila[str(c)]) for c in CLASES} for fila in filas}
 
     resultado = {
@@ -116,8 +116,10 @@ def evaluate(predictions):
 
 def print_report(nombre, metricas):
     print(f"\n=== {nombre} ===")
-    print(f"accuracy={metricas['accuracy']:.4f}  F1 macro={metricas['f1_macro']:.4f}  "
-          f"F1 ponderado={metricas['f1_weighted']:.4f}")
+    print(
+        f"accuracy={metricas['accuracy']:.4f}  F1 macro={metricas['f1_macro']:.4f}  "
+        f"F1 ponderado={metricas['f1_weighted']:.4f}"
+    )
     print(f"{'clase':<10}{'precision':>10}{'recall':>10}{'f1':>10}")
     for clase, m in metricas["por_clase"].items():
         print(f"{clase:<10}{m['precision']:>10.4f}{m['recall']:>10.4f}{m['f1']:>10.4f}")
@@ -165,11 +167,12 @@ def run_sentiment_pipeline():
     print("Pesos por clase:", {CLASES[c]: round(p, 3) for c, p in pesos.items()})
 
     clasificadores = {
-        "naive_bayes": NaiveBayes(featuresCol="features", labelCol="label", weightCol="weight",
-                                  modelType="multinomial"),
-        "logistic_regression": LogisticRegression(featuresCol="features", labelCol="label",
-                                                  weightCol="weight", family="multinomial",
-                                                  maxIter=20),
+        "naive_bayes": NaiveBayes(
+            featuresCol="features", labelCol="label", weightCol="weight", modelType="multinomial"
+        ),
+        "logistic_regression": LogisticRegression(
+            featuresCol="features", labelCol="label", weightCol="weight", family="multinomial", maxIter=20
+        ),
     }
 
     resultados = {}
@@ -202,8 +205,10 @@ def run_sentiment_pipeline():
         json.dump(informe, archivo, ensure_ascii=False, indent=2)
 
     from pymongo import MongoClient
+
     MongoClient(MONGO_URI)[DB_NAME].model_metrics.replace_one(
-        {"_id": "sentiment"}, {"_id": "sentiment", **informe}, upsert=True)
+        {"_id": "sentiment"}, {"_id": "sentiment", **informe}, upsert=True
+    )
 
     print("¡Modelos de sentimiento entrenados, evaluados y guardados con éxito!")
     spark.stop()

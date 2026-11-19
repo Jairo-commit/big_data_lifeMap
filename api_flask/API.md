@@ -30,6 +30,7 @@ Each endpoint reads something different from MongoDB:
 | `/health` | nothing | always works |
 | `/businesses/near`, `/businesses/within`, `/zones/summary` | `businesses` and `reviews` | ingestion (points 2 and 3) |
 | `/stats/closure` | `closure_by_category`, `closure_by_geohash` | `closure_rates.py` (point 5) |
+| `/models` | the `model_metrics` collection | `sentiment_model.py` (point 4) |
 | `/predict` | the `sentiment_best` model | `sentiment_model.py` (point 4) |
 
 Check what is loaded:
@@ -164,6 +165,17 @@ curl -s "$API/stats/closure?by=cell&order=asc&include_below_min=true&limit=5" | 
 | `include_below_min` | `false` | also return the groups below the minimum, with `meets_min_days: false` |
 | `order` | `desc` | `desc` or `asc` by `closure_rate` |
 | `limit` | `20` | up to 1000 |
+
+### `GET /models`: metrics of the trained sentiment models
+
+```bash
+curl -s $API/models | jq '{best_model, reviews, classes, accuracy: (.models | map_values(.accuracy))}'
+```
+
+Returns what `sentiment_model.py` stored: `reviews`, `class_distribution`, `trained_at`,
+`best_model` and, for each model (`naive_bayes`, `logistic_regression`), `accuracy`, `f1_macro`,
+`f1_weighted`, `per_class` (precision, recall and F1) and `confusion_matrix` (rows = real class,
+columns = predicted class). Without a trained model it answers 404 `models_not_available`.
 
 ### `POST /predict`: sentiment of a new text
 

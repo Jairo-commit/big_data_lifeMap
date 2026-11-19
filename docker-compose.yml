@@ -194,6 +194,28 @@ services:
     networks:
       - lifemap-net
 
+  # Interfaz web (React + TypeScript): mapa con las consultas geoespaciales y vista de los modelos de ML.
+  # Es opcional y no arranca con `up`:  docker compose --profile frontend up -d frontend
+  # Queda en http://localhost:3000 y reenvía /api a la API (variable API_UPSTREAM).
+  frontend:
+    build: ./frontend
+    image: lifemap-frontend:latest
+    profiles: ["frontend"]
+    ports:
+      - "3000:80"
+    environment:
+      - API_UPSTREAM=${FRONTEND_API_UPSTREAM:-http://api:5000}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - lifemap-net
+
 # Solo se leen al construir la imagen del dataset (`docker compose build`)
 secrets:
   kaggle_api_token:

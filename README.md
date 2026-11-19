@@ -28,6 +28,18 @@ docker compose up -d      # valida, ingiere en MongoDB y arranca el resto
 - Sin credenciales y sin datos, `dataset` falla con un mensaje claro. En Jenkins se usa la
   credencial `kaggle` (stages *Build images*, *Deploy* e *Ingest*).
 
+## Interfaz web
+
+Un frontend en React y TypeScript muestra las consultas geoespaciales de MongoDB sobre un mapa (cada negocio
+es un punto con su ficha al pasar el cursor) y los modelos de sentimiento entrenados (métricas, matrices de
+confusión y una prueba en vivo). Necesita la API en marcha y los modelos entrenados.
+
+```bash
+docker compose --profile frontend up -d frontend    # http://localhost:3000
+```
+
+Más detalles, desarrollo local y decisiones de diseño en [`frontend/README.md`](frontend/README.md).
+
 ## Jobs de Spark (Entrega 1, puntos 4 a 6)
 
 Requieren que la ingesta y la vida de los negocios (puntos 2 y 3) ya estén en MongoDB. La vida de
