@@ -40,6 +40,30 @@ docker compose --profile frontend up -d frontend    # http://localhost:3000
 
 Más detalles, desarrollo local y decisiones de diseño en [`frontend/README.md`](frontend/README.md).
 
+## Entrega 2: API y dashboard (punto 8)
+
+La API suma los endpoints `/live/hotspots` y `/live/evolution` (ventanas con hotspots), `/alerts` (por radio o polígono), `/survival/<categoría>` y
+`/risk/near`, y su `/health` incluye el estado de Kafka y el **retraso de cada consumidor** (offset final del topic menos el procesado). Las tablas se pueden
+pedir como CSV con `?format=csv`: es lo que consume el dashboard de Power BI de [`powerbi/`](powerbi/README.md), que trae las consultas de Power Query y una guía
+paso a paso para armar las cuatro visualizaciones (mapa de hotspots, alertas activas, curvas de supervivencia y evolución del % negativo). Cada endpoint está
+documentado, con ejemplos, en [`api_flask/API.md`](api_flask/API.md).
+
+## Entrega 2: pruebas del flujo en Jenkins (punto 9)
+
+La última etapa del pipeline (*Streaming tests*) comprueba dos cosas, y si alguna falla el build se detiene:
+
+- **El modelo cargado es el versionado**: `register_models.py` guarda en `model_registry` la versión de cada modelo (`uid@timestamp` de su metadata) y la suma de
+  verificación SHA-256 de sus archivos; `jenkins/model-version-test.sh` comprueba que el modelo en disco (el que cargan los jobs de streaming) y el que responde la API
+  (`model_version` en `/predict` y `model_versions` en `/health`) son los registrados. Falla si se reentrenó sin registrar o si el modelo se alteró.
+- **Prueba de humo del flujo** (`jenkins/streaming-smoke-test.sh`): publica 100 reseñas sintéticas en un topic aparte, las clasifica con el job de inferencia real y
+  verifica que las 100 aparecen **clasificadas en MongoDB**. Usa su propio topic, checkpoint y colección y los borra al terminar: no toca los datos reales.
+
+```bash
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/register_models.py   # registra las versiones de los modelos
+bash jenkins/model-version-test.sh                                                         # el modelo cargado es el versionado
+bash jenkins/streaming-smoke-test.sh                                                       # 100 mensajes -> Kafka -> Spark -> MongoDB (~3 min)
+```
+
 ## Jobs de Spark (Entrega 1, puntos 4 a 6)
 
 Requieren que la ingesta y la vida de los negocios (puntos 2 y 3) ya estén en MongoDB. La vida de
@@ -236,4 +260,35 @@ docker compose --profile jobs run --rm spark-jobs spark-submit /app/risk_model.p
 
 docker compose exec mongodb mongosh --quiet lifemap_db --eval \
   'db.model_metrics.findOne({_id: "risk"}, {mejor_modelo: 1, umbral: 1, prueba: 1})'
+```
+
+### Punto 7: alertas de riesgo en streaming
+
+```
+Kafka (reviews) --> Spark Structured Streaming + foreachBatch --> variables al instante t --> modelo de riesgo
+    --> MongoDB: alerts (geometría, probabilidad, fecha), alert_state y stream_progress
+```
+
+`streaming_alerts.py` aplica el modelo de riesgo del punto 6 al flujo. En cada micro-lote (`foreachBatch`), para los negocios que recibieron reseñas:
+
+1. **Actualiza sus variables** (`alerts_logic.features_at`): las seis del modelo (sentimiento medio, tendencia del % negativo en los últimos 6 meses,
+   estrellas medias, número de reseñas, edad y competidores a 500 m) al instante de su última reseña, **solo con reseñas de fecha <= t**. La parte anterior
+   a T sale de `risk_features` (y de `reviews` con fecha < T para la ventana de la tendencia); la posterior, de las reseñas que llegan por Kafka, guardadas
+   por negocio y por `review_id` en `alert_state`: repetir un lote no las cuenta dos veces.
+2. **Los puntúa** con `risk_best` (el `PipelineModel` guardado, sin reentrenar).
+3. **Guarda en `alerts`** los que superan el umbral (el que eligió el entrenamiento, `model_metrics`; `--threshold` lo anula). Cada negocio es un documento
+   (`_id = business_id`) con su **geometría** (Point con índice 2dsphere), la **probabilidad**, la **fecha** del evento, el umbral y las variables con las que se
+   puntuó. Si el negocio ya estaba en alerta se actualiza; si baja del umbral se marca `active: false` con su `cleared_date`.
+4. Guarda en `stream_progress` los offsets procesados por partición: es la base del retraso del consumidor.
+
+Solo se evalúan los negocios de la población del modelo (los que existían en T); los demás se cuentan en el log y se ignoran. Una alerta es un criterio de
+prioridad (el modelo tiene una señal moderada), no una sentencia.
+
+```bash
+docker compose up -d mongodb kafka kafka-init spark-master spark-worker
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/streaming_alerts.py --reset --timeout 900   # --reset: empieza de cero
+docker compose --profile streaming run --rm producer --speed-seconds 3 --end 2021-09-01                          # en otra terminal
+
+docker compose exec mongodb mongosh --quiet lifemap_db --eval \
+  'db.alerts.find({active: true}, {business_id: 1, city: 1, probability: 1, alert_date: 1}).sort({probability: -1}).limit(5)'
 ```

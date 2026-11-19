@@ -58,6 +58,22 @@ check_body() {
     fi
 }
 
+# check_text <description> <grep -E pattern the body must match on its first line> <curl arguments...>
+# For endpoints that answer CSV (Power BI): the header line must be there, even without rows.
+check_text() {
+    local description="$1" pattern="$2"
+    shift 2
+    local first=""
+    if first=$(curl -fsS --max-time 30 "$@" | head -n 1) && grep -Eq "$pattern" <<<"$first"; then
+        echo "PASS  $description"
+    else
+        echo "FAIL  $description"
+        echo "      expected first line to match: $pattern"
+        echo "      got: ${first:0:300}"
+        failures=$((failures + 1))
+    fi
+}
+
 echo "Testing the API at $API"
 
 POINT='lat=36.1699&lon=-115.1398'   # Las Vegas
@@ -115,6 +131,58 @@ check_status "POST /predict with empty text: rejected with 400" 400 \
     -X POST "${JSON[@]}" -d '{"text": ""}' "$API/predict"
 check_status "POST /predict without a JSON body: rejected with 400" 400 \
     -X POST "$API/predict"
+
+# /health: Kafka is not configured in staging and must not degrade the API
+check "GET /health: Kafka is reported as not configured and does not degrade the API" \
+    '.status == "ok" and .services.kafka == "not_configured"' \
+    "$API/health"
+
+# /live/hotspots
+check "GET /live/hotspots: the latest window and an array of hotspots (empty in staging)" \
+    '.latest == true and (.hotspots | type == "array") and .returned == (.hotspots | length)' \
+    "$API/live/hotspots?$POINT&radius=2000"
+check_text "GET /live/hotspots as CSV: the header is there even without rows" '^geohash,window_start' \
+    "$API/live/hotspots?format=csv"
+check_status "GET /live/hotspots with lat but no lon: rejected with 400" 400 \
+    "$API/live/hotspots?lat=36.1699"
+check_status "GET /live/hotspots with an invalid window: rejected with 400" 400 \
+    "$API/live/hotspots?window=junio"
+
+# /live/evolution
+check "GET /live/evolution: an array of windows" '(.windows | type == "array")' \
+    "$API/live/evolution?$POINT&radius=2000"
+check_status "GET /live/evolution with an unknown format: rejected with 400" 400 \
+    "$API/live/evolution?format=xml"
+
+# /alerts (radius with GET, polygon with POST)
+check "GET /alerts: active alerts around a point" \
+    '.state == "active" and .radius_m == 3000 and (.alerts | type == "array")' \
+    "$API/alerts?$POINT&radius=3000&min_probability=0.5"
+check_text "GET /alerts as CSV: the header is there even without rows" '^business_id,city' \
+    "$API/alerts?format=csv"
+check_status "GET /alerts with an unknown state: rejected with 400" 400 \
+    "$API/alerts?state=viejas"
+check_status "GET /alerts with min_probability over 1: rejected with 400" 400 \
+    "$API/alerts?min_probability=2"
+check "POST /alerts: alerts inside a polygon" '(.alerts | type == "array") and .geometry.type == "Polygon"' \
+    -X POST "${JSON[@]}" -d "$SQUARE" "$API/alerts"
+check_status "POST /alerts with an open ring: rejected with 400" 400 \
+    -X POST "${JSON[@]}" -d "$OPEN_RING" "$API/alerts"
+
+# /survival
+check "GET /survival: the groups that have a curve" '(.groups | type == "array")' \
+    "$API/survival?by=category&meets_min=true"
+check_body "GET /survival/<unknown>: 404 survival_not_found" '.error == "survival_not_found"' \
+    "$API/survival/Categoria%20que%20no%20existe"
+check_status "GET /survival with an unknown grouping: rejected with 400" 400 \
+    "$API/survival?by=ciudad"
+
+# /risk/near
+check "GET /risk/near: businesses around a point with their risk" \
+    '.radius_m == 1000 and (.businesses | type == "array")' \
+    "$API/risk/near?$POINT"
+check_status "GET /risk/near without lat: rejected with 400" 400 \
+    "$API/risk/near?lon=-115.1398"
 
 if ((failures > 0)); then
     echo "$failures API check(s) failed"

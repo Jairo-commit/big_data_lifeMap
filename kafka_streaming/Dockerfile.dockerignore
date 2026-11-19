@@ -3,3 +3,4 @@
 *
 !kafka_streaming/producer.py
 !spark_batch/lifemap_common.py
+!kafka_streaming/smoke_publish.py

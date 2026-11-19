@@ -15,7 +15,7 @@ Decisiones clave:
 
 Uso:
     docker compose --profile jobs run --rm spark-jobs spark-submit /app/streaming_inference.py \\
-        [--trigger-seconds 10] [--max-offsets 50000] [--timeout 600] [--reset]
+        [--trigger-seconds 10] [--max-offsets 50000] [--timeout 600] [--reset] [--output-collection review_predictions]
 """
 
 import argparse
@@ -66,6 +66,8 @@ def parse_args():
     parser.add_argument("--max-offsets", type=int, default=50000, help="máximo de mensajes por micro-lote")
     parser.add_argument("--timeout", type=int, default=None,
                         help="segundos que corre antes de detenerse (por defecto, hasta que se detenga)")
+    parser.add_argument("--output-collection", default=OUTPUT_COLLECTION,
+                        help="colección donde se escriben las predicciones (la prueba de humo usa otra para no tocar las reales)")
     parser.add_argument("--checkpoint", default=f"{CHECKPOINTS_DIR}/streaming_inference")
     parser.add_argument("--reset", action="store_true",
                         help="borra el checkpoint y vuelve a leer el topic desde --starting-offsets")
@@ -80,10 +82,10 @@ def load_model(path):
     return PipelineModel.load(path)
 
 
-def ensure_indexes():
+def ensure_indexes(collection=OUTPUT_COLLECTION):
     from pymongo import ASCENDING, MongoClient
 
-    coleccion = MongoClient(MONGO_URI)[DB_NAME][OUTPUT_COLLECTION]
+    coleccion = MongoClient(MONGO_URI)[DB_NAME][collection]
     for campo in ("business_id", "date", "sentiment"):
         coleccion.create_index([(campo, ASCENDING)])
 
@@ -135,12 +137,12 @@ def classify(model, reviews):
     )
 
 
-def write_batch(batch_df, batch_id):
+def write_batch(batch_df, batch_id, collection=OUTPUT_COLLECTION):
     """Upsert del micro-lote en MongoDB (por _id = review_id) y resumen por consola."""
     batch_df = batch_df.persist()
     total = batch_df.count()
     if total:
-        write_collection(batch_df, OUTPUT_COLLECTION, mode="append", operationType="replace", upsertDocument="true")
+        write_collection(batch_df, collection, mode="append", operationType="replace", upsertDocument="true")
         resumen = batch_df.groupBy("sentiment").count().collect()
         aciertos = batch_df.where("correct").count()
         fechas = batch_df.agg(F.min("date").alias("desde"), F.max("date").alias("hasta")).first()
@@ -159,18 +161,18 @@ def run():
     spark = build_spark("LifeMap-StreamingInference", shuffle_partitions=3)
     spark.sparkContext.setLogLevel("WARN")
     model = load_model(args.model)
-    ensure_indexes()
+    ensure_indexes(args.output_collection)
 
     predicciones = classify(model, read_reviews(spark, args))
     consulta = (
-        predicciones.writeStream.foreachBatch(write_batch)
+        predicciones.writeStream.foreachBatch(lambda df, batch_id: write_batch(df, batch_id, args.output_collection))
         .option("checkpointLocation", args.checkpoint)
         .trigger(processingTime=f"{args.trigger_seconds} seconds")
         .queryName("lifemap_streaming_inference")
         .start()
     )
     print(f"Escuchando el topic '{args.topic}' en {args.bootstrap} (reseñas desde T = {CUTOFF_DATE}); "
-          f"resultados en {DB_NAME}.{OUTPUT_COLLECTION}")
+          f"resultados en {DB_NAME}.{args.output_collection}")
     consulta.awaitTermination(args.timeout)
     if consulta.isActive:
         print(f"Tiempo agotado ({args.timeout} s): deteniendo el streaming")

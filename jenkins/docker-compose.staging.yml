@@ -10,6 +10,9 @@ services:
     ports: !reset []
   api:
     ports: !reset []
+    environment:
+      # Staging no tiene Kafka: /health lo informa como not_configured y no lo cuenta como fallo
+      KAFKA_BOOTSTRAP: ""
   # The API tests do not need the dataset: nothing is ingested in staging
   dataset:
     profiles: ["ingest"]
