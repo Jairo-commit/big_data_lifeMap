@@ -4,3 +4,5 @@ requests==2.31.0
 # Lo exige MLlib para leer el PipelineModel de /predict (sin él el modelo no carga).
 # 1.24.4 es la última versión que soporta el Python 3.8 de la imagen de Spark.
 numpy==1.24.4
+# Estado de Kafka y retraso del consumidor en /health (Python puro; la última versión compatible con 3.8)
+kafka-python==2.0.2

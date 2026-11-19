@@ -263,6 +263,8 @@ services:
       - GIT_COMMIT=${GIT_COMMIT:-unknown}   # Jenkins lo define; /health lo devuelve
       - MODEL_PATH=/app/models/sentiment_best   # lo escribe spark_batch/sentiment_model.py
       - SPARK_DRIVER_MEMORY=512m   # Spark local de /predict: solo clasifica textos
+      - KAFKA_BOOTSTRAP=kafka:9092   # /health informa de Kafka y del retraso de los consumidores; vacío = no configurado
+      - KAFKA_TOPIC=${KAFKA_TOPIC:-reviews}
     volumes:
       - spark_models:/app/models:ro
     depends_on:

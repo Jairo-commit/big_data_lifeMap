@@ -31,6 +31,10 @@ Each endpoint reads something different from MongoDB:
 | `/businesses/near`, `/businesses/within`, `/zones/summary` | `businesses` and `reviews` | ingestion (points 2 and 3) |
 | `/stats/closure` | `closure_by_category`, `closure_by_geohash` | `closure_rates.py` (point 5) |
 | `/models` | the `model_metrics` collection | `sentiment_model.py` (point 4) |
+| `/live/hotspots`, `/live/evolution` | `geohash_windows` | `streaming_windows.py` (Entrega 2, point 4) |
+| `/alerts` | `alerts` | `streaming_alerts.py` (Entrega 2, point 7) |
+| `/survival` | `survival_by_category`, `survival_by_zone` | `survival_km.py` (Entrega 2, point 5) |
+| `/risk/near` | `risk_scores` | `risk_model.py` (Entrega 2, point 6) |
 | `/predict` | the `sentiment_best` model | `sentiment_model.py` (point 4) |
 
 Check what is loaded:
@@ -83,6 +87,15 @@ curl -s $API/health | jq
 
 Expected: `"status": "ok"`, `"mongodb": "healthy"`, and `sentiment_model` is `loaded`,
 `not_loaded` (trained, loads on the first `/predict`) or `not_trained`.
+
+`services.kafka` is `healthy`, `unreachable: ...`, `stale` (the background probe stopped updating),
+`unknown` (just started) or `not_configured` (staging, where `KAFKA_BOOTSTRAP` is empty). When Kafka is
+configured the response also has `kafka` (topic and end offset of each partition) and **`consumer_lag`**: for
+each streaming consumer, the lag per partition and its `total` (end offset minus the next offset to process).
+`streaming_alerts` leaves its progress in `stream_progress` and `streaming_inference` is deduced from the highest
+`kafka_offset` in `review_predictions`; a consumer that never ran shows `{"status": "unknown"}`. Kafka is probed in a
+background thread, so `/health` answers at once even when the broker is down; `status` becomes `degraded` (HTTP 200,
+the other endpoints keep working) when Kafka is configured and unreachable.
 
 `status` is `"degraded"` when MongoDB is down (HTTP 503) or when a trained model cannot be
 loaded (`sentiment_model` starts with `error:`; HTTP stays 200 because the other endpoints still
@@ -176,6 +189,41 @@ Returns what `sentiment_model.py` stored: `reviews`, `class_distribution`, `trai
 `best_model` and, for each model (`naive_bayes`, `logistic_regression`), `accuracy`, `f1_macro`,
 `f1_weighted`, `per_class` (precision, recall and F1) and `confusion_matrix` (rows = real class,
 columns = predicted class). Without a trained model it answers 404 `models_not_available`.
+
+### Live endpoints (Entrega 2): tables for Power BI
+
+The endpoints below return JSON with a list of flat rows and, with `?format=csv`, the same rows as CSV (the header is
+always there, even with no rows). Dates are ISO 8601. `lat`+`lon` (and `radius`, default 5000 m) are optional where
+noted: without them the whole dataset is used.
+
+```bash
+# Hotspots of the latest closed window within 5 km of a point (window: latest or a start date YYYY-MM-DD)
+curl -s "$API/live/hotspots?window=latest&lat=$LAT&lon=$LON&radius=5000&limit=50" | jq '.hotspots[:3]'
+
+# % of negative reviews per 30-day window (all cells, or those within a radius)
+curl -s "$API/live/evolution?lat=$LAT&lon=$LON&radius=5000" | jq '.windows'
+
+# Active risk alerts around a point; POST a GeoJSON polygon to get the ones inside it
+curl -s "$API/alerts?lat=$LAT&lon=$LON&radius=3000&min_probability=0.7" | jq '.alerts[:3]'
+curl -s -X POST -H 'Content-Type: application/json' -d "$POLYGON" "$API/alerts?state=all" | jq '.total'
+
+# Survival: the groups that have a curve, and one curve (by=category or by=zone)
+curl -s "$API/survival?by=category&meets_min=true&limit=10" | jq '.groups[].group'
+curl -s "$API/survival/Restaurants" | jq '.summary'
+curl -s "$API/survival/Philadelphia,%20PA?by=zone&format=csv" | head
+
+# Closure risk of the businesses around a point, nearest first
+curl -s "$API/risk/near?lat=$LAT&lon=$LON&radius=1000&min_probability=0.5" | jq '.businesses[:3]'
+```
+
+| Endpoint | Parameters | Returns |
+|---|---|---|
+| `GET /live/hotspots` | `window` (`latest`), `lat`, `lon`, `radius`, `limit` (500, max 5000) | `hotspots`: cell, window, % negative, previous %, change in points, centroid (and the cell polygon in JSON) |
+| `GET /live/evolution` | `lat`, `lon`, `radius` | `windows`: one row per 30-day window with reviews, % negative and number of hotspots |
+| `GET /alerts`, `POST /alerts` | `state` (`active`, `cleared`, `all`), `min_probability`, `limit` (1000, max 20000); GET: `lat`, `lon`, `radius`; POST: polygon body | `alerts`: business, probability, threshold, dates, location and the six variables used to score it |
+| `GET /survival` | `by` (`category`, `zone`), `meets_min`, `limit` | `groups`: businesses, closures, median lifetime, S at 1, 3, 5 and 10 years |
+| `GET /survival/<name>` | `by` | `summary` and `curve`: time, number at risk, closures, censored, S(t) and its 95 % interval; 404 `survival_not_found` |
+| `GET /risk/near` | `lat`, `lon`, `radius`, `min_probability`, `limit` (100, max 5000) | `businesses`: closure probability, alert flag, variables and distance |
 
 ### `POST /predict`: sentiment of a new text
 

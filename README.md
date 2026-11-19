@@ -40,6 +40,14 @@ docker compose --profile frontend up -d frontend    # http://localhost:3000
 
 Más detalles, desarrollo local y decisiones de diseño en [`frontend/README.md`](frontend/README.md).
 
+## Entrega 2: API y dashboard (punto 8)
+
+La API suma los endpoints `/live/hotspots` y `/live/evolution` (ventanas con hotspots), `/alerts` (por radio o polígono), `/survival/<categoría>` y
+`/risk/near`, y su `/health` incluye el estado de Kafka y el **retraso de cada consumidor** (offset final del topic menos el procesado). Las tablas se pueden
+pedir como CSV con `?format=csv`: es lo que consume el dashboard de Power BI de [`powerbi/`](powerbi/README.md), que trae las consultas de Power Query y una guía
+paso a paso para armar las cuatro visualizaciones (mapa de hotspots, alertas activas, curvas de supervivencia y evolución del % negativo). Cada endpoint está
+documentado, con ejemplos, en [`api_flask/API.md`](api_flask/API.md).
+
 ## Jobs de Spark (Entrega 1, puntos 4 a 6)
 
 Requieren que la ingesta y la vida de los negocios (puntos 2 y 3) ya estén en MongoDB. La vida de
