@@ -182,3 +182,30 @@ docker compose --profile streaming run --rm producer --speed-seconds 3 --end 202
 docker compose exec mongodb mongosh --quiet lifemap_db --eval \
   'db.geohash_windows.find({is_hotspot: true}, {geohash: 1, window_start: 1, pct_negative: 1, delta_pp: 1}).sort({delta_pp: -1}).limit(5)'
 ```
+
+### Punto 5: supervivencia (Kaplan-Meier)
+
+`survival_km.py` calcula curvas de Kaplan-Meier por **categoría principal** y por **zona**, tratando la censura y la entrada tardía
+(la lógica pura está en `spark_batch/survival.py`, con pruebas contra un ejemplo de libro de texto).
+
+- **Tiempo y evento**: el tiempo es la vida del negocio, los días entre su primera y su última reseña (el dataset no trae fechas
+  de apertura ni de cierre: es una aproximación). Evento = cierre observado (`is_open = 0`). Un negocio abierto está **censurado**:
+  solo se sabe que seguía vivo en la fecha de corte del dataset; nunca se descarta ni se cuenta como cierre.
+- **Entrada tardía**: la ventana de observación empieza en `--window-start` (por defecto 2010-01-01: las reseñas son escasas antes,
+  en 2009 hay la mitad que en 2010 y 12 veces menos que en 2019). Un negocio con primera reseña anterior ya existía cuando empieza
+  la observación: entra al conjunto en riesgo con la edad que tenía en esa fecha (`entry_days`). Si se contara desde la edad 0 se
+  inflaría la supervivencia, porque los negocios que murieron antes de 2010 no están en los datos. Los que terminan antes de
+  esa fecha no se observaron y se excluyen. En riesgo en el instante t: `entrada < t <= salida`.
+- **Curvas**: por instante con cierres guardan el tiempo (días), el **número en riesgo**, cierres, censurados, S(t) y su intervalo
+  de confianza del 95 % (Greenwood, escala log-log); y por grupo, la **mediana de vida** (`null` si la curva no baja de 0,5), S a 1, 3,
+  5 y 10 años y `meets_min` (al menos 100 negocios y 20 cierres: los grupos pequeños no permiten conclusiones).
+- **Zonas**: cada zona es un polígono (`zones`; por defecto, el área de las ciudades con más negocios) y los negocios que caen dentro
+  se consultan en MongoDB con **`$geoWithin`** sobre `business_survival.location`. `--zones-file` admite zonas propias en GeoJSON.
+- Colecciones: `business_survival` (un registro por negocio, con su ubicación), `survival_by_category`, `zones` y `survival_by_zone`.
+
+```bash
+docker compose --profile jobs run --rm spark-jobs spark-submit /app/survival_km.py [--window-start 2010-01-01] [--top-zones 10]
+
+docker compose exec mongodb mongosh --quiet lifemap_db --eval \
+  'db.survival_by_zone.find({}, {group: 1, n_businesses: 1, n_events: 1, median_years: 1, survival_5y: 1}).toArray()'
+```
