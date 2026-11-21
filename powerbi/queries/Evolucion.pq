@@ -50,6 +50,24 @@ let
     ConSerie = Table.AddColumn(Zonas, "serie", each EvolucionDe([lat], [lon])),
     Expandida = Table.ExpandTableColumn(
         ConSerie, "serie", {"window_start", "window_end", "n_cells", "n_reviews", "n_negative", "pct_negative", "pct_negative_stars", "n_hotspots"}
+    ),
+    // Al expandir se pierden los tipos de las columnas: sin este paso Power BI las trata como texto (las cuenta en vez de promediarlas)
+    Tipos = Table.TransformColumnTypes(
+        Expandida,
+        {
+            {"zona", type text},
+            {"lat", type number},
+            {"lon", type number},
+            {"window_start", type datetime},
+            {"window_end", type datetime},
+            {"n_cells", Int64.Type},
+            {"n_reviews", Int64.Type},
+            {"n_negative", Int64.Type},
+            {"pct_negative", type number},
+            {"pct_negative_stars", type number},
+            {"n_hotspots", Int64.Type}
+        },
+        "en-US"
     )
 in
-    Expandida
+    Tipos
