@@ -189,6 +189,9 @@ rule** for `main`: ✅ *Require a pull request before merging*, ✅ *Require sta
 - **Install fails with `The lockfile at uv.lock needs to be updated`**: run `uv lock` and commit
   `uv.lock`.
 - **`Failed to spawn: ruff` / `pytest`**: add them with `uv add --dev ruff pytest`.
+- **Build images fails with `lookup ghcr.io ... no such host`** (or another registry): Docker lost
+  DNS for a moment, often right after Docker Desktop or the PC starts. Check `docker run --rm alpine
+  nslookup ghcr.io`; if it resolves, run **Build Now** again, no commit needed.
 - **A CI stage fails**: run the same command locally (`uv sync --locked`, `uv run ruff check .`,
   `uv run pytest`).
 
