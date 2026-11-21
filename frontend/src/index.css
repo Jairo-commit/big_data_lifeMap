@@ -1,0 +1,143 @@
+@import "tailwindcss";
+@import "./styles/tokens.css";
+
+/* Tailwind lee los tokens semánticos: bg-card, text-muted-foreground, border-border... */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-surface: var(--destructive-surface);
+  --color-negative: var(--sentiment-negative);
+  --color-neutral: var(--sentiment-neutral);
+  --color-positive: var(--sentiment-positive);
+  --color-open: var(--status-open);
+  --color-closed: var(--status-closed);
+  --color-model-best: var(--model-best);
+  --color-model-other: var(--model-other);
+  --font-sans: var(--font-sans-stack);
+  --font-mono: var(--font-mono-stack);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+}
+
+@layer base {
+  html {
+    background: var(--background);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans-stack);
+    font-size: 1rem;
+    line-height: 1.5;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 {
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+  /* El foco siempre se ve, para quien navega con teclado */
+  :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@layer utilities {
+  /* Cifras de ancho fijo en tablas y métricas para que no "bailen" al cambiar */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* Movimiento reducido: sin transiciones ni animaciones */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------------ Mapa (Leaflet) */
+.leaflet-container {
+  font-family: var(--font-sans-stack);
+  background: var(--muted);
+  outline-offset: 0;
+}
+
+/* Mapa base suave en claro; en oscuro se invierte y se rota el matiz para conservar los colores del terreno */
+.lm-tiles {
+  filter: saturate(0.75) contrast(0.95);
+}
+.lm-tiles-dark {
+  filter: invert(1) hue-rotate(180deg) saturate(0.7) brightness(0.9) contrast(0.95);
+}
+
+.lm-tooltip.leaflet-tooltip {
+  max-width: 20rem;
+  padding: 0.625rem 0.75rem;
+  white-space: normal;
+  color: var(--tooltip-fg);
+  background: var(--tooltip-bg);
+  border: 1px solid var(--tooltip-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.lm-tooltip.leaflet-tooltip::before {
+  display: none;
+}
+
+.leaflet-control-attribution {
+  background: color-mix(in srgb, var(--card) 85%, transparent) !important;
+  color: var(--muted-foreground) !important;
+}
+.leaflet-control-attribution a {
+  color: var(--primary) !important;
+}
+.leaflet-bar a {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.leaflet-bar a:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.leaflet-container .leaflet-interactive:focus {
+  outline: none;
+}

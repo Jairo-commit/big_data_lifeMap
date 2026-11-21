@@ -1,0 +1,38 @@
+# Se procesa al arrancar el contenedor: ${API_UPSTREAM} sale de la variable de entorno del mismo nombre.
+server {
+  listen 80;
+  server_name _;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  gzip on;
+  gzip_types text/css application/javascript application/json image/svg+xml;
+
+  # La API de Flask se publica bajo /api: el navegador solo habla con este servidor (sin CORS).
+  # /zones/summary suma las reseñas de cada negocio y puede tardar decenas de segundos.
+  location /api/ {
+    proxy_pass ${API_UPSTREAM}/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_connect_timeout 10s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+  }
+
+  # Los archivos de /assets llevan un hash en el nombre: se pueden guardar para siempre
+  location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    try_files $uri =404;
+  }
+
+  # La página principal nunca se guarda, para que un despliegue nuevo se vea de inmediato
+  location / {
+    add_header Cache-Control "no-cache";
+    add_header X-Content-Type-Options "nosniff";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
+    try_files $uri /index.html;
+  }
+}
