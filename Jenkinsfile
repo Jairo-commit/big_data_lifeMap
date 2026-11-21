@@ -53,15 +53,20 @@ pipeline {
             stages {
                 stage('Build images') {
                     steps {
-                        // One image at a time: lifemap-spark (spark-master, spark-worker, spark-jobs) and the API
-                        sh 'docker compose --profile jobs build spark-master'
-                        sh 'docker compose build api'
-                        // Entrega 2: Kafka producer (the broker uses the official apache/kafka image)
-                        sh 'docker compose --profile streaming build producer'
-                        // Downloads the Yelp dataset into the image (credential `kaggle`) unless the layer is cached
-                        withCredentials([usernamePassword(credentialsId: 'kaggle',
-                                usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
-                            sh 'docker compose build dataset'
+                        // Retried: the builds fetch from the network (ghcr.io, Maven, Kaggle; `ADD <url>` checks the
+                        // remote even with a warm cache) and Docker Desktop's DNS drops for a moment now and then.
+                        // Layers already built are cached, so a retry only repeats what failed.
+                        retry(3) {
+                            // One image at a time: lifemap-spark (spark-master, spark-worker, spark-jobs) and the API
+                            sh 'docker compose --profile jobs build spark-master'
+                            sh 'docker compose build api'
+                            // Entrega 2: Kafka producer (the broker uses the official apache/kafka image)
+                            sh 'docker compose --profile streaming build producer'
+                            // Downloads the Yelp dataset into the image (credential `kaggle`) unless the layer is cached
+                            withCredentials([usernamePassword(credentialsId: 'kaggle',
+                                    usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
+                                sh 'docker compose build dataset'
+                            }
                         }
                     }
                 }
