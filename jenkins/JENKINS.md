@@ -126,7 +126,7 @@ HTTPS address and forwards the requests through a tunnel.
 
 1. Create a free account at [ngrok.com](https://ngrok.com/). On the dashboard copy your
    **authtoken**, and under **Domains** claim the free **static domain**
-   (e.g. `something.ngrok-free.app`). The static domain keeps the URL the same after every
+   (e.g. `something.ngrok-free.app` or `something.ngrok-free.dev`). The static domain keeps the URL the same after every
    restart, so the webhook never has to be edited.
 2. Run ngrok as a container that Docker starts again when the PC boots, like Jenkins:
 
