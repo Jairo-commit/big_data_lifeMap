@@ -77,16 +77,17 @@ pipeline {
                 }
                 stage('Deploy') {
                     steps {
-                        withCredentials([usernamePassword(credentialsId: 'kaggle',
-                                usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
-                            sh '$PROD up -d --wait'
-                        }
+                        // Only the services that stay up: `up --wait` fails with "container X exited (0)" when a
+                        // one-shot service (ingest, kafka-init) ends, as `ingest` does at once once the data is loaded
+                        sh '$PROD up -d --wait mongodb kafka api'
+                        // Creates the `reviews` topic (one-shot, exits 0)
+                        sh '$PROD run --rm kafka-init'
                     }
                 }
                 stage('Ingest') {
                     steps {
-                        // `dataset` + `ingest` start with the stack; this waits until `ingest` has loaded the
-                        // full dataset into MongoDB (it exits at once if it was already loaded)
+                        // Starts `dataset` + `ingest` and waits until `ingest` has loaded the full dataset
+                        // into MongoDB (it exits at once if it was already loaded)
                         withCredentials([usernamePassword(credentialsId: 'kaggle',
                                 usernameVariable: 'KAGGLE_USERNAME', passwordVariable: 'KAGGLE_KEY')]) {
                             sh '$PROD up --exit-code-from ingest ingest'
