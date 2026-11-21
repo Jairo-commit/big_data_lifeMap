@@ -1,0 +1,206 @@
+/*
+ * Tokens de diseño de LifeMap, en tres capas:
+ *   1. Primitivos: valores crudos (paleta, radios, movimiento). Nunca se usan directo en componentes.
+ *   2. Semánticos: para qué sirve el valor (fondo, texto, borde, sentimiento...). Cambian con el tema.
+ *   3. De componente: decisiones de un componente concreto, apoyadas en los semánticos.
+ * Los componentes solo leen las capas 2 y 3, así que cambiar de tema es redefinir la capa 2.
+ *
+ * Los colores de sentimiento y de estado salen de la paleta Okabe-Ito (apta para daltonismo) y nunca
+ * van solos: siempre se acompañan de una etiqueta o un patrón.
+ */
+
+/* ---------------------------------------------------------------- 1. Primitivos */
+:root {
+  --slate-50: #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-400: #94a3b8;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1e293b;
+  --slate-900: #0f172a;
+  --slate-950: #0b1220;
+
+  --teal-50: #f0fdfa;
+  --teal-100: #ccfbf1;
+  --teal-300: #5eead4;
+  --teal-400: #2dd4bf;
+  --teal-700: #0f766e;
+  --teal-800: #115e59;
+  --teal-900: #134e4a;
+
+  /* Okabe-Ito */
+  --okabe-blue: #0072b2;
+  --okabe-sky: #56b4e9;
+  --okabe-green: #009e73;
+  --okabe-vermilion: #d55e00;
+  --okabe-vermilion-light: #ee8a4a;
+  --okabe-purple: #cc79a7;
+  --okabe-orange: #e69f00;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --font-sans-stack: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono-stack: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ---------------------------------------------------------------- 2. Semánticos (claro) */
+:root {
+  color-scheme: light;
+
+  --background: var(--slate-50);
+  --foreground: var(--slate-900);
+  --card: #ffffff;
+  --card-foreground: var(--slate-900);
+  --muted: var(--slate-100);
+  --muted-foreground: var(--slate-600);
+  --border: var(--slate-200);
+  --input: var(--slate-300);
+  --ring: var(--teal-700);
+
+  --primary: var(--teal-700);
+  --primary-hover: var(--teal-800);
+  --primary-foreground: #ffffff;
+  --accent: var(--teal-50);
+  --accent-foreground: var(--teal-800);
+
+  --destructive: #b42318;
+  --destructive-surface: #fef3f2;
+
+  /* Dominio: sentimiento de una reseña (la etiqueta se deriva de las estrellas) */
+  --sentiment-negative: var(--okabe-vermilion);
+  --sentiment-neutral: #6b7a90;
+  --sentiment-positive: var(--okabe-blue);
+
+  /* Dominio: estado de un negocio */
+  --status-open: var(--okabe-green);
+  --status-closed: var(--okabe-vermilion);
+
+  /* Dominio: modelos comparados */
+  --model-best: var(--teal-700);
+  --model-other: var(--okabe-purple);
+
+  --chart-grid: var(--slate-200);
+  --chart-axis: var(--slate-500);
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 1px rgb(15 23 42 / 0.04);
+  --shadow-popover: 0 8px 24px rgb(15 23 42 / 0.18);
+}
+
+/* ---------------------------------------------------------------- 2. Semánticos (oscuro) */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background: var(--slate-950);
+  --foreground: #e6edf7;
+  --card: #111a2c;
+  --card-foreground: #e6edf7;
+  --muted: #17223a;
+  --muted-foreground: #9fb0c8;
+  --border: #243250;
+  --input: #34456a;
+  --ring: var(--teal-400);
+
+  --primary: var(--teal-400);
+  --primary-hover: var(--teal-300);
+  --primary-foreground: #04201d;
+  --accent: #0f2a2b;
+  --accent-foreground: var(--teal-300);
+
+  --destructive: #ff8f85;
+  --destructive-surface: #3a1512;
+
+  --sentiment-negative: var(--okabe-vermilion-light);
+  --sentiment-neutral: #9aa7bb;
+  --sentiment-positive: var(--okabe-sky);
+
+  --status-open: #2fc9a0;
+  --status-closed: var(--okabe-vermilion-light);
+
+  --model-best: var(--teal-400);
+  --model-other: #dc93bb;
+
+  --chart-grid: #243250;
+  --chart-axis: #9fb0c8;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-popover: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+/* Sin preferencia guardada, se sigue la del sistema (mismos valores que el bloque oscuro) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    color-scheme: dark;
+
+    --background: var(--slate-950);
+    --foreground: #e6edf7;
+    --card: #111a2c;
+    --card-foreground: #e6edf7;
+    --muted: #17223a;
+    --muted-foreground: #9fb0c8;
+    --border: #243250;
+    --input: #34456a;
+    --ring: var(--teal-400);
+
+    --primary: var(--teal-400);
+    --primary-hover: var(--teal-300);
+    --primary-foreground: #04201d;
+    --accent: #0f2a2b;
+    --accent-foreground: var(--teal-300);
+
+    --destructive: #ff8f85;
+    --destructive-surface: #3a1512;
+
+    --sentiment-negative: var(--okabe-vermilion-light);
+    --sentiment-neutral: #9aa7bb;
+    --sentiment-positive: var(--okabe-sky);
+
+    --status-open: #2fc9a0;
+    --status-closed: var(--okabe-vermilion-light);
+
+    --model-best: var(--teal-400);
+    --model-other: #dc93bb;
+
+    --chart-grid: #243250;
+    --chart-axis: #9fb0c8;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-popover: 0 8px 24px rgb(0 0 0 / 0.5);
+  }
+}
+
+/* ---------------------------------------------------------------- 3. De componente */
+:root {
+  --card-bg: var(--card);
+  --card-border: var(--border);
+  --card-radius: var(--radius-lg);
+  --card-shadow: var(--shadow-card);
+
+  --button-radius: var(--radius-md);
+  --button-primary-bg: var(--primary);
+  --button-primary-bg-hover: var(--primary-hover);
+  --button-primary-fg: var(--primary-foreground);
+
+  --input-bg: var(--card);
+  --input-border: var(--input);
+  --input-radius: var(--radius-md);
+
+  --tooltip-bg: var(--card);
+  --tooltip-fg: var(--card-foreground);
+  --tooltip-border: var(--border);
+
+  --map-shape: var(--primary);
+  --map-point-open: var(--status-open);
+  --map-point-closed: var(--status-closed);
+  --map-point-ring: var(--card);
+
+  --heat-base: var(--primary);
+}

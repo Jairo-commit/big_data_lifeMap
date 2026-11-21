@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="LifeMap: reputación, ubicación y supervivencia de negocios (Yelp). Consultas geoespaciales de MongoDB y modelos de sentimiento." />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>LifeMap · Negocios, reputación y supervivencia</title>
+    <script>
+      // Aplica el tema guardado antes de pintar, para evitar un destello del tema equivocado
+      try {
+        var t = localStorage.getItem("lifemap-theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
